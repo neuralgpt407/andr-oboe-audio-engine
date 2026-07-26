@@ -1,6 +1,7 @@
 package com.neuralsound.audio.internal
 
 import com.neuralsound.audio.RecorderError
+import com.neuralsound.audio.RecorderStatus
 import com.neuralsound.audio.RecorderTelemetry
 import com.neuralsound.audio.RecordingRequest
 import org.junit.Assert.assertEquals
@@ -127,6 +128,20 @@ class OboeRecorderEngineLifecycleTest {
         pauser.join(2_000)
 
         assertEquals(1, pauseCalls.get())
+    }
+
+    @Test
+    fun startingMicDuringActiveTakePreservesWritingState() {
+        val bridge = FakeRecorderNativeBridge()
+        val recorder = NativeRecorderSession(bridge) { true }
+
+        assertTrue(recorder.startWriting(RecordingRequest(File("take.wav"))).isSuccess)
+        assertEquals(RecorderStatus.WRITING, recorder.status.value)
+
+        assertTrue(recorder.startMicSession().isSuccess)
+        assertEquals(RecorderStatus.WRITING, recorder.status.value)
+        assertEquals(0, bridge.startMicSessionCalls)
+        assertTrue(recorder.pauseWriting().isSuccess)
     }
 
     @Test

@@ -101,6 +101,8 @@ mixer.close()
 The engine owns audio focus, becoming-noisy handling, file descriptors, route
 recovery, native handles, decode threads, and playback polling. Callers own
 URIs, permission UX, feature state, and session lifetime.
+`MixerState.route.deviceId` may be null briefly while a disconnected or paused
+native stream is reopening on the new output device.
 
 ## Media3 synchronization
 

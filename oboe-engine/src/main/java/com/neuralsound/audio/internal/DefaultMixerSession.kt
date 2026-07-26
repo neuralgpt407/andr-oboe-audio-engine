@@ -232,10 +232,11 @@ internal class DefaultMixerSession(
     }
 
     private fun currentRoute(): AudioRoute? {
-        val deviceId = controller.currentRoutedOutputDeviceId() ?: return null
+        if (!controller.isPrepared()) return null
+        val deviceId = controller.currentRoutedOutputDeviceId()
         return AudioRoute(
             deviceId = deviceId,
-            deviceType = controller.currentRoutedOutputDeviceType(),
+            deviceType = controller.currentRoutedOutputDeviceType(deviceId),
             topologyRevision = controller.currentOutputTopologyRevision(),
         )
     }

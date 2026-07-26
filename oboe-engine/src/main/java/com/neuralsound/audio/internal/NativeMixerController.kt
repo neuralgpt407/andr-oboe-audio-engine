@@ -31,6 +31,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.FileNotFoundException
@@ -104,6 +105,7 @@ internal class NativeMixerController(
     @Volatile private var queuedSeekRequest: PendingSeekRequest? = null
     private var positionUpdateJob: Job? = null
     private var tempoApplyJob: Job? = null
+    private var routeMonitorJob: Job? = null
     private val engine = EngineHandle()
     private var durationMs: Long = 0L
     private var lastNativeTempoSpeed: Float = PlaybackEffects.DEFAULT_TEMPO
@@ -140,12 +142,18 @@ internal class NativeMixerController(
     private val _pitchSemitones = MutableStateFlow(PlaybackEffects.DEFAULT_PITCH_SEMITONES)
     val pitchSemitones: StateFlow<Int> = _pitchSemitones.asStateFlow()
 
-    fun currentRoutedOutputDeviceId(): Int? = engine.use(null) { handle ->
-        nativeGetOutputDeviceId(handle).takeIf { it > 0 }
+    fun currentRoutedOutputDeviceId(): Int? {
+        val nativeDeviceId = engine.use(0) { handle -> nativeGetOutputDeviceId(handle) }
+        val availableDeviceIds = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .asSequence()
+            .filter(AudioDeviceInfo::isSink)
+            .map(AudioDeviceInfo::getId)
+            .toSet()
+        return OutputRoutePolicy.availableDeviceId(nativeDeviceId, availableDeviceIds)
     }
 
-    fun currentRoutedOutputDeviceType(): Int? {
-        val deviceId = currentRoutedOutputDeviceId() ?: return null
+    fun currentRoutedOutputDeviceType(deviceId: Int? = currentRoutedOutputDeviceId()): Int? {
+        deviceId ?: return null
         return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             .firstOrNull { device -> device.isSink && device.id == deviceId }
             ?.type
@@ -348,6 +356,7 @@ internal class NativeMixerController(
 
                 startPositionUpdateLoop()
                 registerDeviceCallback()
+                startRouteMonitor()
                 isInitialized.set(true)
                 _isSyncing.value = false
 
@@ -676,6 +685,7 @@ internal class NativeMixerController(
             _isPlaying.value
         ) {
             registerNoisyReceiver()
+            publishRouteUpdate()
         } else {
             unregisterNoisyReceiver()
             abandonAudioFocus()
@@ -833,6 +843,8 @@ internal class NativeMixerController(
         }
         tempoApplyJob?.cancel()
         tempoApplyJob = null
+        routeMonitorJob?.cancel()
+        routeMonitorJob = null
         positionUpdateJob?.cancel()
         positionUpdateJob = null
         // Exclusive lock: blocks until any in-flight native call (seek/play/
@@ -980,8 +992,27 @@ internal class NativeMixerController(
         // a release is in flight.
         scope.launch {
             engine.use { handle -> nativeOnDeviceChanged(handle) }
-            _routeRevision.value = outputTopologyRevision.get()
+            publishRouteUpdate()
         }
+    }
+
+    private fun startRouteMonitor() {
+        routeMonitorJob?.cancel()
+        routeMonitorJob = scope.launch {
+            var lastDeviceId = currentRoutedOutputDeviceId()
+            while (isActive) {
+                delay(ROUTE_MONITOR_INTERVAL_MS)
+                val currentDeviceId = currentRoutedOutputDeviceId()
+                if (currentDeviceId != lastDeviceId) {
+                    lastDeviceId = currentDeviceId
+                    publishRouteUpdate()
+                }
+            }
+        }
+    }
+
+    private fun publishRouteUpdate() {
+        _routeRevision.update { sequence -> sequence + 1L }
     }
 
     private fun registerDeviceCallback() {
@@ -1048,6 +1079,7 @@ internal class NativeMixerController(
         private const val TEMPO_APPLY_DEBOUNCE_MS = 75L
         private const val TEMPO_NO_OP_EPSILON = 0.0001f
         private const val TEMPO_NATIVE_APPLY_THRESHOLD = 0.01f
+        private const val ROUTE_MONITOR_INTERVAL_MS = 250L
         /** Volume multiplier applied during AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK (notifications). */
         private const val DUCK_FACTOR = 0.2f
 

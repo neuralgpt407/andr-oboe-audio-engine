@@ -71,6 +71,9 @@ internal class NativeRecorderSession internal constructor(
         return operationLock.withLock {
             val unavailable = unavailableFailureOrNull()
             if (unavailable != null) return@withLock unavailable
+            if (activeTake) {
+                return@withLock RecorderOperationResult.Success
+            }
 
             handle.use(RecorderOperationResult.failure(RecorderError.Released)) { currentHandle ->
                 if (nativeBridge.startMicSession(this, currentHandle)) {

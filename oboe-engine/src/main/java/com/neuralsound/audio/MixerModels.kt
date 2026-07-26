@@ -98,7 +98,7 @@ data class MixerTrackState(
 )
 
 data class AudioRoute(
-    val deviceId: Int,
+    val deviceId: Int?,
     val deviceType: Int?,
     val topologyRevision: Long,
 )
