@@ -1,6 +1,7 @@
 package com.neuralsound.audio
 
 import android.net.Uri
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -44,5 +45,23 @@ class PublicModelsTest {
         assertThrows(IllegalArgumentException::class.java) {
             TrackMix(volume = 1.1f)
         }
+    }
+
+    @Test
+    fun `recording result requires a file and valid sample rate`() {
+        val incomplete = RecordingResult(
+            file = null,
+            durationMs = 0L,
+            sampleRate = 0,
+            acceptedFrames = 0L,
+            writtenFrames = 0L,
+        )
+        val complete = incomplete.copy(
+            file = File("take.wav"),
+            sampleRate = 44_100,
+        )
+
+        assertEquals(false, incomplete.isSuccess)
+        assertEquals(true, complete.isSuccess)
     }
 }

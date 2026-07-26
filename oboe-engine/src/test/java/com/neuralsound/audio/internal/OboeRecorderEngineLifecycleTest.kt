@@ -29,6 +29,10 @@ class OboeRecorderEngineLifecycleTest {
             nativeMethodNames.none { "$" in it },
         )
         assertTrue("nativeGetTelemetry must match JNI registration", "nativeGetTelemetry" in nativeMethodNames)
+        assertTrue(
+            "nativeGetLastErrorCode must match JNI registration",
+            "nativeGetLastErrorCode" in nativeMethodNames,
+        )
     }
 
     @Test
@@ -158,20 +162,48 @@ class OboeRecorderEngineLifecycleTest {
     @Test
     fun stopResultRequiresAcceptedAndWrittenFramesToMatch() {
         val bridge = FakeRecorderNativeBridge().apply {
-            stopResult = longArrayOf(64L, 2_822L, 2_822L, 44_100L, 0L)
+            stopResult = NativeRecordingResult(
+                durationMs = 64L,
+                acceptedFrames = 2_822L,
+                writtenFrames = 2_822L,
+                sampleRate = 44_100,
+                failed = false,
+            )
         }
         val recorder = NativeRecorderSession(bridge) { true }
 
+        val withoutTake = recorder.stopWriting()
+        assertFalse(withoutTake.isSuccess)
+        assertEquals(RecorderError.InvalidState, withoutTake.error)
+        assertEquals(null, withoutTake.file)
+
+        assertTrue(recorder.startWriting(RecordingRequest(File("take.wav"))).isSuccess)
         val success = recorder.stopWriting()
         assertTrue(success.isSuccess)
         assertEquals(64L, success.durationMs)
         assertEquals(2_822L, success.acceptedFrames)
         assertEquals(2_822L, success.writtenFrames)
 
-        bridge.stopResult = longArrayOf(64L, 2_822L, 2_800L, 44_100L, 0L)
+        bridge.stopResult = bridge.stopResult.copy(writtenFrames = 2_800L)
+        assertTrue(recorder.startWriting(RecordingRequest(File("take.wav"))).isSuccess)
         val mismatch = recorder.stopWriting()
         assertFalse(mismatch.isSuccess)
         assertEquals(RecorderError.WriterFileError, mismatch.error)
+    }
+
+    @Test
+    fun nativeFailureCodeDeterminesPublicRecorderError() {
+        val bridge = FakeRecorderNativeBridge().apply {
+            stopResult = stopResult.copy(failed = true, sampleRate = 44_100)
+            lastFailure = NativeRecorderFailure.WRITER_OVERFLOW
+        }
+        val recorder = NativeRecorderSession(bridge) { true }
+
+        assertTrue(recorder.startWriting(RecordingRequest(File("take.wav"))).isSuccess)
+        val result = recorder.stopWriting()
+
+        assertEquals(RecorderError.WriterOverflow, result.error)
+        assertFalse(result.isSuccess)
     }
 
     private class FakeRecorderNativeBridge : OboeRecorderNativeBridge {
@@ -190,7 +222,14 @@ class OboeRecorderEngineLifecycleTest {
         )
         var startMicSessionCalls = 0
         var releaseCalls = 0
-        var stopResult = longArrayOf(0L, 0L, 0L, 0L, 0L)
+        var stopResult = NativeRecordingResult(
+            durationMs = 0L,
+            acceptedFrames = 0L,
+            writtenFrames = 0L,
+            sampleRate = 0,
+            failed = false,
+        )
+        var lastFailure = NativeRecorderFailure.NONE
 
         override fun create(owner: NativeRecorderSession): Long = 42L
 
@@ -212,7 +251,10 @@ class OboeRecorderEngineLifecycleTest {
             onPauseWriting()
         }
 
-        override fun stopWriting(owner: NativeRecorderSession, handle: Long): LongArray = stopResult.copyOf()
+        override fun stopWriting(
+            owner: NativeRecorderSession,
+            handle: Long,
+        ): NativeRecordingResult = stopResult
 
         override fun getMicPeak(owner: NativeRecorderSession, handle: Long): Float = 0f
 
@@ -229,6 +271,11 @@ class OboeRecorderEngineLifecycleTest {
         override fun getSampleRate(owner: NativeRecorderSession, handle: Long): Int = 0
 
         override fun hasFailed(owner: NativeRecorderSession, handle: Long): Boolean = false
+
+        override fun getLastFailure(
+            owner: NativeRecorderSession,
+            handle: Long,
+        ): NativeRecorderFailure = lastFailure
 
         override fun getLastError(owner: NativeRecorderSession, handle: Long): String = ""
 

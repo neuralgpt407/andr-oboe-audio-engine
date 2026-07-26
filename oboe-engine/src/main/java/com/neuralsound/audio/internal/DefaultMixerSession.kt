@@ -63,6 +63,11 @@ internal class DefaultMixerSession(
                 _state.update { it.copy(effects = it.effects.copy(pitchSemitones = pitch)) }
             }
         }
+        scope.launch {
+            controller.routeRevision.collect {
+                _state.update { current -> current.copy(route = currentRoute()) }
+            }
+        }
     }
 
     override suspend fun prepare(request: MixerRequest): AudioResult {
@@ -78,15 +83,14 @@ internal class DefaultMixerSession(
             },
         )
         controller.setPlaybackRange(request.playbackRange)
-        controller.setLooping(request.looping)
-        controller.setTempo(request.effects.tempo)
-        controller.setPitchSemitones(request.effects.pitchSemitones)
 
         val tracks = linkedMapOf<TrackId, android.net.Uri>()
         request.tracks.forEach { tracks[it.id] = it.uri }
         val result = controller.preparePlayers(
             tracks = tracks,
             startPositionMs = request.startPositionMs,
+            looping = request.looping,
+            effects = request.effects,
             trackOffsetsMs = request.tracks.associate { it.id to it.offsetMs },
             initialVolumes = request.tracks.associate { it.id to it.mix.volume },
             initialChannelGains = request.tracks.associate { it.id to it.mix.channelGain },

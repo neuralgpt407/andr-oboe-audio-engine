@@ -66,14 +66,9 @@ class Media3MixerSession internal constructor(
         if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         mixer.close()
-        val playerToRelease = player
-        val listenerToRemove = listener
-        player = null
-        listener = null
-        _videoState.value = Media3VideoState(revision = _videoState.value.revision + 1L)
+        val resources = detachVideo()
         mainHandler.post {
-            listenerToRemove?.let { playerToRelease?.removeListener(it) }
-            playerToRelease?.release()
+            resources.release()
         }
     }
 
@@ -125,13 +120,15 @@ class Media3MixerSession internal constructor(
     }
 
     private fun releaseVideoOnMain() {
-        val currentPlayer = player
-        val currentListener = listener
+        detachVideo().release()
+    }
+
+    private fun detachVideo(): VideoResources {
+        val resources = VideoResources(player, listener)
         player = null
         listener = null
-        currentListener?.let { currentPlayer?.removeListener(it) }
-        currentPlayer?.release()
         _videoState.value = Media3VideoState(revision = _videoState.value.revision + 1L)
+        return resources
     }
 
     private fun createListener(): Player.Listener {
@@ -151,6 +148,16 @@ class Media3MixerSession internal constructor(
                     )
                 }
             }
+        }
+    }
+
+    private data class VideoResources(
+        val player: ExoPlayer?,
+        val listener: Player.Listener?,
+    ) {
+        fun release() {
+            listener?.let { player?.removeListener(it) }
+            player?.release()
         }
     }
 }

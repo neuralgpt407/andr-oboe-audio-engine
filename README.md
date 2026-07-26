@@ -139,7 +139,9 @@ recorder.close()
 
 Recording opens the device-native input rate and converts to the canonical
 44.1 kHz WAV rate when needed. `RecordingResult` reports accepted and written
-frame counts so callers can reject incomplete files.
+frame counts so callers can reject incomplete files. Invalid lifecycle calls
+return `RecorderError.InvalidState`; `RecordingResult.file` is null when no
+output file was created.
 
 ## Release and symbols
 

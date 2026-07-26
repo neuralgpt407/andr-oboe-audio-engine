@@ -26,18 +26,29 @@ bool OboeRecorderEngine::startMicSessionLocked() {
     }
 
     failed_.store(false, std::memory_order_release);
+    lastErrorCode_.store(OboeRecorderErrorCode::None, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lock(errorMutex_);
+        lastError_.clear();
+    }
     peak_.store(0.0f, std::memory_order_release);
     ringBuffer_.clear();
 
     if (!openInputStream(oboe::SharingMode::Exclusive) &&
         !openInputStream(oboe::SharingMode::Shared)) {
-        failActiveTake("unable to open recorder input stream");
+        failActiveTake(
+            "unable to open recorder input stream",
+            OboeRecorderErrorCode::MicSessionOpenFailed
+        );
         return false;
     }
 
     auto stream = getStream();
     if (stream == nullptr) {
-        failActiveTake("recorder input stream is unavailable");
+        failActiveTake(
+            "recorder input stream is unavailable",
+            OboeRecorderErrorCode::MicSessionOpenFailed
+        );
         return false;
     }
 
@@ -50,13 +61,19 @@ bool OboeRecorderEngine::startMicSessionLocked() {
             oboe::convertToText(startResult)
         );
         closeInputStream();
-        failActiveTake("unable to start recorder input stream");
+        failActiveTake(
+            "unable to start recorder input stream",
+            OboeRecorderErrorCode::MicSessionOpenFailed
+        );
         return false;
     }
 
     if (recorderStreamClosedDuringStart(stream, kMicStartTimeoutMs)) {
         closeInputStream();
-        failActiveTake("recorder input stream closed during start");
+        failActiveTake(
+            "recorder input stream closed during start",
+            OboeRecorderErrorCode::MicSessionOpenFailed
+        );
         return false;
     }
 
@@ -91,6 +108,10 @@ int OboeRecorderEngine::getSampleRate() const {
 
 bool OboeRecorderEngine::hasFailed() const {
     return failed_.load(std::memory_order_acquire);
+}
+
+OboeRecorderErrorCode OboeRecorderEngine::getLastErrorCode() const {
+    return lastErrorCode_.load(std::memory_order_acquire);
 }
 
 std::string OboeRecorderEngine::getLastError() const {
@@ -169,6 +190,10 @@ oboe::DataCallbackResult OboeRecorderEngine::onAudioReady(
                         acceptedFrames_.fetch_add(writeFrames, std::memory_order_release);
                         waveformAccumulator_.appendPcm16Mono(writeBuffer, writeFrames);
                     } else {
+                        lastErrorCode_.store(
+                            OboeRecorderErrorCode::WriterOverflow,
+                            std::memory_order_release
+                        );
                         failed_.store(true, std::memory_order_release);
                         callbackFence_.disarm();
                     }
@@ -194,7 +219,10 @@ void OboeRecorderEngine::disarmAndAwaitProducers() {
 
 void OboeRecorderEngine::onErrorAfterClose(oboe::AudioStream*, oboe::Result error) {
     if (error == oboe::Result::ErrorDisconnected) {
-        failActiveTake("recorder input stream disconnected");
+        failActiveTake(
+            "recorder input stream disconnected",
+            OboeRecorderErrorCode::StreamDisconnected
+        );
     }
     micSessionActive_.store(false, std::memory_order_release);
 }
@@ -268,8 +296,12 @@ void OboeRecorderEngine::closeInputStream() {
     }
 }
 
-void OboeRecorderEngine::failActiveTake(const std::string& message) {
+void OboeRecorderEngine::failActiveTake(
+    const std::string& message,
+    OboeRecorderErrorCode errorCode
+) {
     callbackFence_.disarm();
+    lastErrorCode_.store(errorCode, std::memory_order_release);
     failed_.store(true, std::memory_order_release);
     std::lock_guard<std::mutex> lock(errorMutex_);
     lastError_ = message;

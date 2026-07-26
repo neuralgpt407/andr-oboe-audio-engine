@@ -2,12 +2,36 @@ package com.neuralsound.audio.internal
 
 import com.neuralsound.audio.RecorderTelemetry
 
+internal data class NativeRecordingResult(
+    val durationMs: Long,
+    val acceptedFrames: Long,
+    val writtenFrames: Long,
+    val sampleRate: Int,
+    val failed: Boolean,
+)
+
+internal enum class NativeRecorderFailure(val code: Int) {
+    NONE(0),
+    MIC_SESSION_OPEN_FAILED(1),
+    STREAM_DISCONNECTED(2),
+    WRITER_OVERFLOW(3),
+    WRITER_FILE_ERROR(4),
+    INVALID_OUTPUT(5),
+    UNKNOWN(-1);
+
+    companion object {
+        fun fromCode(code: Int): NativeRecorderFailure {
+            return entries.firstOrNull { it.code == code } ?: UNKNOWN
+        }
+    }
+}
+
 internal interface OboeRecorderNativeBridge {
     fun create(owner: NativeRecorderSession): Long
     fun startMicSession(owner: NativeRecorderSession, handle: Long): Boolean
     fun startWriting(owner: NativeRecorderSession, handle: Long, outputPath: String, startOffsetMs: Long): Boolean
     fun pauseWriting(owner: NativeRecorderSession, handle: Long)
-    fun stopWriting(owner: NativeRecorderSession, handle: Long): LongArray
+    fun stopWriting(owner: NativeRecorderSession, handle: Long): NativeRecordingResult
     fun getMicPeak(owner: NativeRecorderSession, handle: Long): Float
     fun getTelemetry(
         owner: NativeRecorderSession,
@@ -17,6 +41,7 @@ internal interface OboeRecorderNativeBridge {
     fun getWrittenDurationMs(owner: NativeRecorderSession, handle: Long): Long
     fun getSampleRate(owner: NativeRecorderSession, handle: Long): Int
     fun hasFailed(owner: NativeRecorderSession, handle: Long): Boolean
+    fun getLastFailure(owner: NativeRecorderSession, handle: Long): NativeRecorderFailure
     fun getLastError(owner: NativeRecorderSession, handle: Long): String
     fun releaseMicSession(owner: NativeRecorderSession, handle: Long)
     fun release(owner: NativeRecorderSession, handle: Long)
@@ -42,8 +67,15 @@ internal object OboeRecorderJniBridge : OboeRecorderNativeBridge {
         owner.nativePauseWriting(handle)
     }
 
-    override fun stopWriting(owner: NativeRecorderSession, handle: Long): LongArray {
-        return owner.nativeStopWriting(handle)
+    override fun stopWriting(owner: NativeRecorderSession, handle: Long): NativeRecordingResult {
+        val values = owner.nativeStopWriting(handle)
+        return NativeRecordingResult(
+            durationMs = values.getOrNull(0)?.coerceAtLeast(0L) ?: 0L,
+            acceptedFrames = values.getOrNull(1)?.coerceAtLeast(0L) ?: 0L,
+            writtenFrames = values.getOrNull(2)?.coerceAtLeast(0L) ?: 0L,
+            sampleRate = values.getOrNull(3)?.coerceAtLeast(0L)?.toInt() ?: 0,
+            failed = values.size != NATIVE_RESULT_FIELD_COUNT || values.getOrNull(4) == 1L,
+        )
     }
 
     override fun getMicPeak(owner: NativeRecorderSession, handle: Long): Float {
@@ -70,6 +102,13 @@ internal object OboeRecorderJniBridge : OboeRecorderNativeBridge {
         return owner.nativeHasFailed(handle)
     }
 
+    override fun getLastFailure(
+        owner: NativeRecorderSession,
+        handle: Long,
+    ): NativeRecorderFailure {
+        return NativeRecorderFailure.fromCode(owner.nativeGetLastErrorCode(handle))
+    }
+
     override fun getLastError(owner: NativeRecorderSession, handle: Long): String {
         return owner.nativeGetLastError(handle)
     }
@@ -81,4 +120,6 @@ internal object OboeRecorderJniBridge : OboeRecorderNativeBridge {
     override fun release(owner: NativeRecorderSession, handle: Long) {
         owner.nativeRelease(handle)
     }
+
+    private const val NATIVE_RESULT_FIELD_COUNT = 5
 }

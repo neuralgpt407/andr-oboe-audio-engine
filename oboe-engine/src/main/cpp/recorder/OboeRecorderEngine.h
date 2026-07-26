@@ -25,6 +25,15 @@ struct OboeRecordingResult {
     bool failed = false;
 };
 
+enum class OboeRecorderErrorCode : int32_t {
+    None = 0,
+    MicSessionOpenFailed = 1,
+    StreamDisconnected = 2,
+    WriterOverflow = 3,
+    WriterFileError = 4,
+    InvalidOutput = 5,
+};
+
 struct OboeRecorderTelemetry {
     uint64_t takeId = 0;
     int sampleRate = 0;
@@ -55,6 +64,7 @@ public:
     int64_t getWrittenDurationMs() const;
     int getSampleRate() const;
     bool hasFailed() const;
+    OboeRecorderErrorCode getLastErrorCode() const;
     std::string getLastError() const;
 
     oboe::DataCallbackResult onAudioReady(
@@ -80,7 +90,7 @@ private:
     std::shared_ptr<oboe::AudioStream> getStream() const;
     void setStream(std::shared_ptr<oboe::AudioStream> stream);
     void closeInputStream();
-    void failActiveTake(const std::string& message);
+    void failActiveTake(const std::string& message, OboeRecorderErrorCode errorCode);
     void disarmAndAwaitProducers();
 
     mutable std::mutex operationMutex_;
@@ -104,6 +114,7 @@ private:
     std::atomic<bool> writerRunning_{false};
     std::atomic<bool> writerStopRequested_{false};
     std::atomic<bool> failed_{false};
+    std::atomic<OboeRecorderErrorCode> lastErrorCode_{OboeRecorderErrorCode::None};
     std::atomic<float> peak_{0.0f};
     std::atomic<int64_t> framesWritten_{0};
     std::atomic<int64_t> acceptedFrames_{0};

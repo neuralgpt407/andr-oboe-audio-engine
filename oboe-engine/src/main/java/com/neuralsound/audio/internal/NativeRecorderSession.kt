@@ -34,6 +34,9 @@ internal class NativeRecorderSession internal constructor(
     @Volatile
     private var activeOutputPath: String = ""
 
+    @Volatile
+    private var activeTake = false
+
     override val micAmplitude: Float
         get() = ifUsable(0f) { currentHandle ->
             nativeBridge.getMicPeak(this, currentHandle).coerceIn(0f, 1f)
@@ -97,8 +100,11 @@ internal class NativeRecorderSession internal constructor(
 
             val outputPath = outputFile.absolutePath
             handle.use(RecorderOperationResult.failure(RecorderError.Released)) { currentHandle ->
+                activeTake = false
+                activeOutputPath = ""
                 if (nativeBridge.startWriting(this, currentHandle, outputPath, startOffsetMs)) {
                     activeOutputPath = outputPath
+                    activeTake = true
                     _status.value = RecorderStatus.WRITING
                     RecorderOperationResult.Success
                 } else {
@@ -112,6 +118,12 @@ internal class NativeRecorderSession internal constructor(
         return operationLock.withLock {
             val unavailable = unavailableFailureOrNull()
             if (unavailable != null) return@withLock unavailable
+            if (!activeTake || _status.value != RecorderStatus.WRITING) {
+                return@withLock RecorderOperationResult.failure(
+                    RecorderError.InvalidState,
+                    "pauseWriting requires an active writer",
+                )
+            }
 
             handle.use(RecorderOperationResult.failure(RecorderError.Released)) { currentHandle ->
                 nativeBridge.pauseWriting(this, currentHandle)
@@ -130,31 +142,42 @@ internal class NativeRecorderSession internal constructor(
         return operationLock.withLock {
             val unavailable = unavailableFailureOrNull()
             if (unavailable != null) return@withLock failureRecordingResult(unavailable)
+            if (!activeTake) {
+                return@withLock failureRecordingResult(
+                    RecorderOperationResult.failure(
+                        RecorderError.InvalidState,
+                        "stopWriting requires an active recording",
+                    )
+                )
+            }
 
             handle.use(failureRecordingResult(RecorderOperationResult.failure(RecorderError.Released))) { currentHandle ->
                 val values = nativeBridge.stopWriting(this, currentHandle)
-                val takeDurationMs = values.getOrNull(0)?.coerceAtLeast(0L) ?: 0L
-                val acceptedFrames = values.getOrNull(1)?.coerceAtLeast(0L) ?: 0L
-                val writtenFrames = values.getOrNull(2)?.coerceAtLeast(0L) ?: 0L
-                val sampleRate = values.getOrNull(3)?.coerceAtLeast(0L)?.toInt() ?: 0
-                val failed = values.getOrNull(4) == 1L || acceptedFrames != writtenFrames
+                val outputFile = activeOutputPath.takeIf(String::isNotBlank)?.let(::File)
+                activeTake = false
+                activeOutputPath = ""
+                val failed = values.failed ||
+                    values.sampleRate <= 0 ||
+                    outputFile == null ||
+                    values.acceptedFrames != values.writtenFrames
                 if (failed) {
                     val failure = nativeFailure(currentHandle, RecorderError.WriterFileError)
                     failureRecordingResult(
                         failure,
-                        takeDurationMs,
-                        sampleRate,
-                        acceptedFrames,
-                        writtenFrames,
+                        file = outputFile,
+                        takeDurationMs = values.durationMs,
+                        sampleRate = values.sampleRate,
+                        acceptedFrames = values.acceptedFrames,
+                        writtenFrames = values.writtenFrames,
                     )
                 } else {
                     _status.value = RecorderStatus.MIC_SESSION_ACTIVE
                     RecordingResult(
-                        file = File(activeOutputPath),
-                        durationMs = takeDurationMs,
-                        sampleRate = sampleRate,
-                        acceptedFrames = acceptedFrames,
-                        writtenFrames = writtenFrames,
+                        file = outputFile,
+                        durationMs = values.durationMs,
+                        sampleRate = values.sampleRate,
+                        acceptedFrames = values.acceptedFrames,
+                        writtenFrames = values.writtenFrames,
                     )
                 }
             }
@@ -168,6 +191,7 @@ internal class NativeRecorderSession internal constructor(
 
             handle.use(RecorderOperationResult.failure(RecorderError.Released)) { currentHandle ->
                 nativeBridge.releaseMicSession(this, currentHandle)
+                activeTake = false
                 activeOutputPath = ""
                 _status.value = RecorderStatus.IDLE
                 RecorderOperationResult.Success
@@ -181,6 +205,7 @@ internal class NativeRecorderSession internal constructor(
             handle.release { currentHandle ->
                 nativeBridge.release(this, currentHandle)
             }
+            activeTake = false
             activeOutputPath = ""
             _status.value = RecorderStatus.RELEASED
         }
@@ -213,20 +238,21 @@ internal class NativeRecorderSession internal constructor(
         defaultError: RecorderError,
     ): RecorderOperationResult {
         val message = nativeBridge.getLastError(this, currentHandle).trim()
-        val error = mapNativeError(message, defaultError)
+        val error = mapNativeError(nativeBridge.getLastFailure(this, currentHandle), defaultError)
         _status.value = RecorderStatus.FAILED
         return RecorderOperationResult.failure(error, message.ifBlank { null })
     }
 
     private fun failureRecordingResult(
         failure: RecorderOperationResult,
+        file: File? = activeOutputPath.takeIf(String::isNotBlank)?.let(::File),
         takeDurationMs: Long = 0L,
         sampleRate: Int = 0,
         acceptedFrames: Long = 0L,
         writtenFrames: Long = 0L,
     ): RecordingResult {
         return RecordingResult(
-            file = File(activeOutputPath),
+            file = file,
             durationMs = takeDurationMs,
             sampleRate = sampleRate,
             acceptedFrames = acceptedFrames,
@@ -241,22 +267,18 @@ internal class NativeRecorderSession internal constructor(
         return handle.use(default, block)
     }
 
-    private fun mapNativeError(message: String, defaultError: RecorderError): RecorderError {
-        val lower = message.lowercase()
-        return when {
-            lower.contains("disconnected") -> RecorderError.StreamDisconnected
-            lower.contains("overflow") -> RecorderError.WriterOverflow
-            lower.contains("open recorder") ||
-                lower.contains("start recorder") ||
-                lower.contains("input stream") -> RecorderError.MicSessionOpenFailed
-            lower.contains("wav") ||
-                lower.contains("writer") ||
-                lower.contains("output") ||
-                lower.contains("file") ||
-                lower.contains("directory") ||
-                lower.contains("padding") ||
-                lower.contains("seek") -> RecorderError.WriterFileError
-            else -> defaultError
+    private fun mapNativeError(
+        nativeFailure: NativeRecorderFailure,
+        defaultError: RecorderError,
+    ): RecorderError {
+        return when (nativeFailure) {
+            NativeRecorderFailure.MIC_SESSION_OPEN_FAILED -> RecorderError.MicSessionOpenFailed
+            NativeRecorderFailure.STREAM_DISCONNECTED -> RecorderError.StreamDisconnected
+            NativeRecorderFailure.WRITER_OVERFLOW -> RecorderError.WriterOverflow
+            NativeRecorderFailure.WRITER_FILE_ERROR -> RecorderError.WriterFileError
+            NativeRecorderFailure.INVALID_OUTPUT -> RecorderError.InvalidOutput
+            NativeRecorderFailure.NONE,
+            NativeRecorderFailure.UNKNOWN -> defaultError
         }
     }
 
@@ -292,6 +314,9 @@ internal class NativeRecorderSession internal constructor(
 
     @JvmName("nativeHasFailed")
     internal external fun nativeHasFailed(handle: Long): Boolean
+
+    @JvmName("nativeGetLastErrorCode")
+    internal external fun nativeGetLastErrorCode(handle: Long): Int
 
     @JvmName("nativeGetLastError")
     internal external fun nativeGetLastError(handle: Long): String

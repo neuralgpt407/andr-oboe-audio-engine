@@ -29,6 +29,7 @@ sealed interface RecorderError {
     data object WriterFileError : RecorderError
     data object Released : RecorderError
     data object InvalidOutput : RecorderError
+    data object InvalidState : RecorderError
 }
 
 data class RecorderOperationResult(
@@ -48,7 +49,7 @@ data class RecorderOperationResult(
 }
 
 data class RecordingResult(
-    val file: File,
+    val file: File?,
     val durationMs: Long,
     val sampleRate: Int,
     val acceptedFrames: Long,
@@ -57,7 +58,10 @@ data class RecordingResult(
     val message: String? = null,
 ) {
     val isSuccess: Boolean
-        get() = error == null && acceptedFrames == writtenFrames
+        get() = error == null &&
+            file != null &&
+            sampleRate > 0 &&
+            acceptedFrames == writtenFrames
 }
 
 data class RecorderTelemetry(

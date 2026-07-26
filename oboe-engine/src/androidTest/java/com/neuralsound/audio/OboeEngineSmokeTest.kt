@@ -38,9 +38,16 @@ class OboeEngineSmokeTest {
                                 uri = Uri.fromFile(original),
                                 mix = TrackMix(volume = 1f),
                             )
-                        )
+                        ),
+                        looping = true,
+                        effects = PlaybackEffects(tempo = 1.1f, pitchSemitones = 2),
                     )
                 ),
+            )
+            assertTrue(mixer.state.value.looping)
+            assertEquals(
+                PlaybackEffects(tempo = 1.1f, pitchSemitones = 2),
+                mixer.state.value.effects,
             )
             assertEquals(1f, mixer.state.value.tracks.getValue(originalId).mix.volume)
             assertFalse(mixer.state.value.tracks.getValue(originalId).mix.muted)
@@ -69,7 +76,7 @@ class OboeEngineSmokeTest {
                 while (mixer.state.value.positionMs < 400L) delay(20L)
             }
 
-            val effects = PlaybackEffects(tempo = 1.1f, pitchSemitones = 2)
+            val effects = PlaybackEffects(tempo = 0.9f, pitchSemitones = -2)
             assertEquals(AudioResult.Success, mixer.setEffects(effects))
             assertEquals(effects, mixer.state.value.effects)
         } finally {

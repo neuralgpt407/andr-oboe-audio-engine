@@ -241,6 +241,13 @@ jboolean nativeRecorderHasFailed(JNIEnv*, jobject, jlong handle) {
     return JNI_TRUE;
 }
 
+jint nativeRecorderGetLastErrorCode(JNIEnv*, jobject, jlong handle) {
+    if (auto* recorder = recorderFromHandle(handle)) {
+        return static_cast<jint>(recorder->getLastErrorCode());
+    }
+    return static_cast<jint>(OboeRecorderErrorCode::WriterFileError);
+}
+
 jstring nativeRecorderGetLastError(JNIEnv* env, jobject, jlong handle) {
     if (auto* recorder = recorderFromHandle(handle)) {
         return env->NewStringUTF(recorder->getLastError().c_str());
@@ -288,6 +295,7 @@ JNINativeMethod kRecorderMethods[] = {
     {"nativeGetWrittenDurationMs", "(J)J", reinterpret_cast<void*>(nativeRecorderGetWrittenDurationMs)},
     {"nativeGetSampleRate", "(J)I", reinterpret_cast<void*>(nativeRecorderGetSampleRate)},
     {"nativeHasFailed", "(J)Z", reinterpret_cast<void*>(nativeRecorderHasFailed)},
+    {"nativeGetLastErrorCode", "(J)I", reinterpret_cast<void*>(nativeRecorderGetLastErrorCode)},
     {"nativeGetLastError", "(J)Ljava/lang/String;", reinterpret_cast<void*>(nativeRecorderGetLastError)},
     {"nativeReleaseMicSession", "(J)V", reinterpret_cast<void*>(nativeRecorderReleaseMicSession)},
     {"nativeRelease", "(J)V", reinterpret_cast<void*>(nativeRecorderRelease)},

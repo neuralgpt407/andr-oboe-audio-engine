@@ -79,6 +79,8 @@ internal class NativeMixerController(
     // the next play.
     @Volatile private var deviceCallbackRegistered = false
     private val outputTopologyRevision = AtomicLong(0L)
+    private val _routeRevision = MutableStateFlow(0L)
+    val routeRevision: StateFlow<Long> = _routeRevision.asStateFlow()
     private var knownOutputDeviceIds: Set<Int>? = null
     private val deviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
@@ -196,6 +198,10 @@ internal class NativeMixerController(
                 autoPlay = autoPlay,
                 startPositionMs = startPositionMs,
                 looping = looping,
+                effects = PlaybackEffects(
+                    tempo = _tempoSpeed.value,
+                    pitchSemitones = _pitchSemitones.value,
+                ),
                 trackOffsetsMs = emptyMap(),
                 forceSeek = false,
             ).also { result ->
@@ -209,6 +215,8 @@ internal class NativeMixerController(
     suspend fun preparePlayers(
         tracks: Map<TrackId, Uri>,
         startPositionMs: Long,
+        looping: Boolean = false,
+        effects: PlaybackEffects = PlaybackEffects(),
         trackOffsetsMs: Map<TrackId, Long> = emptyMap(),
         initialVolumes: Map<TrackId, Float> = emptyMap(),
         initialChannelGains: Map<TrackId, ChannelGain> = emptyMap(),
@@ -231,7 +239,8 @@ internal class NativeMixerController(
                 initialChannelGains = initialChannelGains,
                 autoPlay = false,
                 startPositionMs = startPositionMs,
-                looping = false,
+                looping = looping,
+                effects = effects,
                 trackOffsetsMs = trackOffsetsMs,
                 forceSeek = true,
             )
@@ -247,11 +256,14 @@ internal class NativeMixerController(
         autoPlay: Boolean,
         startPositionMs: Long,
         looping: Boolean,
+        effects: PlaybackEffects,
         trackOffsetsMs: Map<TrackId, Long>,
         forceSeek: Boolean,
     ): MixerPreparationResult {
         releaseResourcesImmediate(resetPlaybackState = startPositionMs <= 0L)
         isLooping = looping
+        _tempoSpeed.value = effects.tempo
+        _pitchSemitones.value = effects.pitchSemitones
 
         val openedFds = mutableListOf<android.os.ParcelFileDescriptor>()
         return try {
@@ -968,6 +980,7 @@ internal class NativeMixerController(
         // a release is in flight.
         scope.launch {
             engine.use { handle -> nativeOnDeviceChanged(handle) }
+            _routeRevision.value = outputTopologyRevision.get()
         }
     }
 
