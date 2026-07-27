@@ -1,4 +1,5 @@
 import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.tasks.bundling.Zip
 
 plugins {
@@ -99,6 +100,17 @@ val nativeSymbols by tasks.registering(Zip::class) {
                     segments.last(),
                 )
             }
+        }
+    }
+    from(layout.projectDirectory.dir("src/main/resources")) {
+        include("META-INF/**")
+    }
+}
+
+tasks.withType<Jar>().configureEach {
+    if (name.contains("source", ignoreCase = true)) {
+        from(layout.projectDirectory.dir("src/main/resources")) {
+            include("META-INF/**")
         }
     }
 }

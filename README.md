@@ -104,6 +104,12 @@ URIs, permission UX, feature state, and session lifetime.
 `MixerState.route.deviceId` may be null briefly while a disconnected or paused
 native stream is reopening on the new output device.
 
+All stems in one mixer session must use the same sample rate and must be mono
+or stereo. The engine duplicates mono to stereo and rejects missing metadata,
+multichannel audio, and mismatched sample rates with
+`AudioFailure.UnsupportedTrackFormat`; it never mixes incompatible PCM
+frame-for-frame.
+
 ## Media3 synchronization
 
 ```kotlin
@@ -140,10 +146,13 @@ recorder.close()
 ```
 
 Recording opens the device-native input rate and converts to the canonical
-44.1 kHz WAV rate when needed. `RecordingResult` reports accepted and written
-frame counts so callers can reject incomplete files. Invalid lifecycle calls
-return `RecorderError.InvalidState`; `RecordingResult.file` is null when no
-output file was created.
+44.1 kHz WAV rate when needed. If that conversion cannot be configured, opening
+the mic session fails instead of producing a noncanonical WAV.
+`RecordingResult` reports accepted and written frame counts so callers can
+reject incomplete files. Invalid lifecycle calls return
+`RecorderError.InvalidState`; `RecordingResult.file` is null when no output
+file was created. `RecorderSession.status` also transitions to `FAILED` when
+native capture reports a disconnect or writer overflow asynchronously.
 
 ## Release and symbols
 

@@ -12,3 +12,8 @@ This repository uses the following third-party software:
 - Signalsmith Linear, copyright Signalsmith Audio, licensed under the MIT
   License. The license is preserved at
   `oboe-engine/src/main/cpp/third_party/signalsmith-linear/LICENSE.txt`.
+- LLVM libc++, distributed with the Android NDK and packaged as
+  `libc++_shared.so`, licensed under Apache License 2.0 with LLVM Exceptions.
+
+Published core AAR, sources, and native-symbol artifacts carry these notices
+and license texts under `META-INF/`.
