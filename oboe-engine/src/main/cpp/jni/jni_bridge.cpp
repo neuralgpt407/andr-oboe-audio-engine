@@ -1,9 +1,12 @@
 #include "OboeAudioEngine.h"
 #include "OboeRecorderEngine.h"
+#include "NativeAudioWaveformAnalyzer.h"
+#include "SharedHandleRegistry.h"
 
 #include <jni.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -14,6 +17,15 @@ OboeAudioEngine* fromHandle(jlong handle) {
 
 OboeRecorderEngine* recorderFromHandle(jlong handle) {
     return reinterpret_cast<OboeRecorderEngine*>(handle);
+}
+
+using WaveformAnalyzer =
+    neuralsound::audio::waveform::NativeAudioWaveformAnalyzer;
+neuralsound::audio::waveform::SharedHandleRegistry<WaveformAnalyzer>
+    gWaveformAnalyzers;
+
+std::shared_ptr<WaveformAnalyzer> waveformFromHandle(jlong handle) {
+    return gWaveformAnalyzers.acquire(static_cast<uint64_t>(handle));
 }
 
 jlong nativeCreate(JNIEnv*, jobject) {
@@ -284,6 +296,81 @@ void nativeRecorderRelease(JNIEnv*, jobject, jlong handle) {
     }
 }
 
+jlong nativeCreateWaveformAnalyzer(
+    JNIEnv*,
+    jobject,
+    jint fd,
+    jint maxOutputSamples
+) {
+    try {
+        const uint64_t handle = gWaveformAnalyzers.insert(
+            std::make_shared<WaveformAnalyzer>(fd, maxOutputSamples)
+        );
+        return static_cast<jlong>(handle);
+    } catch (...) {
+        return 0;
+    }
+}
+
+jfloatArray nativeAnalyzeWaveform(JNIEnv* env, jobject, jlong handle) {
+    const std::shared_ptr<WaveformAnalyzer> analyzer =
+        waveformFromHandle(handle);
+    if (!analyzer) {
+        return nullptr;
+    }
+
+    try {
+        const std::vector<float> levels = analyzer->analyze();
+        if (analyzer->getFailure() !=
+            neuralsound::audio::waveform::NativeWaveformFailure::None) {
+            return nullptr;
+        }
+
+        jfloatArray result = env->NewFloatArray(
+            static_cast<jsize>(levels.size())
+        );
+        if (result == nullptr) {
+            return nullptr;
+        }
+        if (!levels.empty()) {
+            env->SetFloatArrayRegion(
+                result,
+                0,
+                static_cast<jsize>(levels.size()),
+                levels.data()
+            );
+        }
+        return result;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+jint nativeGetWaveformFailureKind(JNIEnv*, jobject, jlong handle) {
+    if (const std::shared_ptr<WaveformAnalyzer> analyzer =
+            waveformFromHandle(handle)) {
+        return static_cast<jint>(analyzer->getFailure());
+    }
+    return static_cast<jint>(
+        neuralsound::audio::waveform::NativeWaveformFailure::InvalidArgument
+    );
+}
+
+void nativeCancelWaveformAnalysis(JNIEnv*, jobject, jlong handle) {
+    if (const std::shared_ptr<WaveformAnalyzer> analyzer =
+            waveformFromHandle(handle)) {
+        analyzer->cancel();
+    }
+}
+
+void nativeReleaseWaveformAnalyzer(JNIEnv*, jobject, jlong handle) {
+    std::shared_ptr<WaveformAnalyzer> analyzer =
+        gWaveformAnalyzers.remove(static_cast<uint64_t>(handle));
+    if (analyzer) {
+        analyzer->cancel();
+    }
+}
+
 JNINativeMethod kMethods[] = {
     {"nativeCreate", "()J", reinterpret_cast<void*>(nativeCreate)},
     {"nativeInitializeTracks", "(J[I[JI)Z", reinterpret_cast<void*>(nativeInitializeTracks)},
@@ -323,6 +410,14 @@ JNINativeMethod kRecorderMethods[] = {
     {"nativeReleaseMicSession", "(J)V", reinterpret_cast<void*>(nativeRecorderReleaseMicSession)},
     {"nativeRelease", "(J)V", reinterpret_cast<void*>(nativeRecorderRelease)},
 };
+
+JNINativeMethod kWaveformMethods[] = {
+    {"nativeCreate", "(II)J", reinterpret_cast<void*>(nativeCreateWaveformAnalyzer)},
+    {"nativeAnalyze", "(J)[F", reinterpret_cast<void*>(nativeAnalyzeWaveform)},
+    {"nativeGetFailureKind", "(J)I", reinterpret_cast<void*>(nativeGetWaveformFailureKind)},
+    {"nativeCancel", "(J)V", reinterpret_cast<void*>(nativeCancelWaveformAnalysis)},
+    {"nativeRelease", "(J)V", reinterpret_cast<void*>(nativeReleaseWaveformAnalyzer)},
+};
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
@@ -345,6 +440,15 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         "com/neuralsound/audio/internal/NativeRecorderSession",
         kRecorderMethods,
         sizeof(kRecorderMethods) / sizeof(kRecorderMethods[0])
+    )) {
+        return JNI_ERR;
+    }
+
+    if (!registerRequiredNativeMethods(
+        env,
+        "com/neuralsound/audio/NativeAudioWaveformAnalyzer",
+        kWaveformMethods,
+        sizeof(kWaveformMethods) / sizeof(kWaveformMethods[0])
     )) {
         return JNI_ERR;
     }

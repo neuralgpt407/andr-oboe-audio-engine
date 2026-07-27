@@ -11,6 +11,9 @@ add_library(neuralsound_audio_engine SHARED
     engine/NativeAudioDecoder.cpp
     engine/NativeDecoderThread.cpp
     engine/OboeAudioEngine.cpp
+    waveform/NativeAudioWaveformAnalyzer.cpp
+    waveform/WaveformAnalysisCore.cpp
+    waveform/WaveformRmsAccumulator.cpp
     recorder/OboeRecorderEngine.cpp
     recorder/OboeRecorderEngineWriter.cpp
     recorder/Pcm16WavHeader.cpp
@@ -34,6 +37,7 @@ target_include_directories(neuralsound_audio_engine PRIVATE
     engine
     common
     effects
+    waveform
     recorder
     third_party
     third_party/signalsmith-stretch

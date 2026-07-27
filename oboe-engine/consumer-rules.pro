@@ -5,4 +5,7 @@
 -keepclasseswithmembernames,includedescriptorclasses class com.neuralsound.audio.internal.NativeRecorderSession {
     native <methods>;
 }
+-keepclasseswithmembernames,includedescriptorclasses class com.neuralsound.audio.NativeAudioWaveformAnalyzer {
+    native <methods>;
+}
 -keep class com.neuralsound.audio.RecorderTelemetry { *; }
