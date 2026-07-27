@@ -7,11 +7,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import androidx.media3.exoplayer.ExoPlayer
 import com.neuralsound.audio.AudioFailure
 import com.neuralsound.audio.AudioResult
 import com.neuralsound.audio.MixerSession
 import com.neuralsound.audio.MixerState
+import com.neuralsound.audio.media3.internal.Media3PlayerFactories
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -40,7 +40,7 @@ class Media3MixerSession internal constructor(
     val videoState: StateFlow<Media3VideoState> = _videoState.asStateFlow()
     val mixerState: StateFlow<MixerState> = mixer.state
 
-    private var player: ExoPlayer? = null
+    private var player: Player? = null
     private var listener: Player.Listener? = null
 
     init {
@@ -102,13 +102,12 @@ class Media3MixerSession internal constructor(
                 _videoState.update { it.copy(firstFrameReady = true) }
                 return@withContext true
             }
-            val newPlayer = ExoPlayer.Builder(applicationContext).build().apply {
-                setMediaItem(MediaItem.fromUri(uri))
-                volume = 0f
-                prepare()
-            }
+            val newPlayer = Media3PlayerFactories.create(applicationContext)
             val newListener = createListener()
             newPlayer.addListener(newListener)
+            newPlayer.setMediaItem(MediaItem.fromUri(uri))
+            newPlayer.volume = 0f
+            newPlayer.prepare()
             if (closed.get()) {
                 newPlayer.removeListener(newListener)
                 newPlayer.release()
@@ -181,7 +180,7 @@ class Media3MixerSession internal constructor(
     }
 
     private data class VideoResources(
-        val player: ExoPlayer?,
+        val player: Player?,
         val listener: Player.Listener?,
     ) {
         fun release() {
