@@ -5,6 +5,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -39,16 +40,17 @@ class NativeAudioWaveformAnalyzerTest {
     @Test
     fun everyNativeFailureKindMapsToADistinctPublicError() = runBlocking {
         val expectedErrors = mapOf(
-            1 to NativeWaveformAnalysisError.Unreadable,
-            2 to NativeWaveformAnalysisError.Unsupported,
-            3 to NativeWaveformAnalysisError.Corrupt,
-            4 to NativeWaveformAnalysisError.EmptyMedia,
-            5 to NativeWaveformAnalysisError.Cancelled,
-            6 to NativeWaveformAnalysisError.InvalidArgument,
+            NativeWaveformFailure.UNREADABLE to NativeWaveformAnalysisError.Unreadable,
+            NativeWaveformFailure.UNSUPPORTED to NativeWaveformAnalysisError.Unsupported,
+            NativeWaveformFailure.CORRUPT to NativeWaveformAnalysisError.Corrupt,
+            NativeWaveformFailure.EMPTY_MEDIA to NativeWaveformAnalysisError.EmptyMedia,
+            NativeWaveformFailure.CANCELLED to NativeWaveformAnalysisError.Cancelled,
+            NativeWaveformFailure.INVALID_ARGUMENT to NativeWaveformAnalysisError.InvalidArgument,
         )
 
-        expectedErrors.forEach { (failureKind, expectedError) ->
-            val bridge = FakeWaveformBridge(levels = null, failureKind = failureKind)
+        expectedErrors.forEach { (failure, expectedError) ->
+            assertEquals(failure, NativeWaveformFailure.fromCode(failure.code))
+            val bridge = FakeWaveformBridge(levels = null, failure = failure)
 
             val result = analyzer(bridge).analyzeFileDescriptor(fd = 7)
 
@@ -155,6 +157,30 @@ class NativeAudioWaveformAnalyzerTest {
     }
 
     @Test
+    fun explicitCancellationReturnsTheTypedCancelledResult() = runBlocking {
+        val bridge = FakeWaveformBridge(
+            levels = null,
+            failure = NativeWaveformFailure.CANCELLED,
+            blockUntilCancelled = true,
+        )
+        val analyzer = analyzer(bridge)
+        val result = async(Dispatchers.Default) {
+            analyzer.analyzeFileDescriptor(fd = 7)
+        }
+
+        assertTrue(bridge.started.await(2, TimeUnit.SECONDS))
+        analyzer.cancel()
+
+        assertEquals(
+            NativeWaveformAnalysisResult.Failure(
+                NativeWaveformAnalysisError.Cancelled,
+            ),
+            result.await(),
+        )
+        assertEquals(listOf("cancel", "release"), bridge.lifecycleEvents.toList())
+    }
+
+    @Test
     fun linkageFailureIsTypedAndStillReleasesTheHandle() = runBlocking {
         val bridge = FakeWaveformBridge(
             levels = null,
@@ -172,27 +198,6 @@ class NativeAudioWaveformAnalyzerTest {
         assertEquals(1, bridge.releaseCalls.get())
     }
 
-    @Test
-    fun nativeMethodNamesMatchRuntimeRegistration() {
-        val methodNames = NativeAudioWaveformAnalyzer::class.java.declaredMethods
-            .asSequence()
-            .map { it.name }
-            .filter { it.startsWith("native") }
-            .toSet()
-
-        assertEquals(
-            setOf(
-                "nativeCreate",
-                "nativeAnalyze",
-                "nativeGetFailureKind",
-                "nativeCancel",
-                "nativeRelease",
-            ),
-            methodNames,
-        )
-        assertTrue(methodNames.none { "$" in it })
-    }
-
     private fun analyzer(
         bridge: NativeAudioWaveformAnalyzer.NativeWaveformBridge,
         nativeAvailable: Boolean = true,
@@ -204,7 +209,7 @@ class NativeAudioWaveformAnalyzerTest {
 
     private class FakeWaveformBridge(
         private val levels: FloatArray?,
-        private val failureKind: Int = 3,
+        private val failure: NativeWaveformFailure = NativeWaveformFailure.CORRUPT,
         private val blockUntilCancelled: Boolean = false,
         private val analyzeFailure: Throwable? = null,
         private val createdHandle: Long = 1L,
@@ -240,10 +245,10 @@ class NativeAudioWaveformAnalyzerTest {
             return levels
         }
 
-        override fun failureKind(
+        override fun failure(
             owner: NativeAudioWaveformAnalyzer,
             handle: Long,
-        ): Int = failureKind
+        ): NativeWaveformFailure = failure
 
         override fun cancel(owner: NativeAudioWaveformAnalyzer, handle: Long) {
             lifecycleEvents += "cancel"

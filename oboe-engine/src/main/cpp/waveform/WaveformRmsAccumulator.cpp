@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iterator>
 
 namespace neuralsound::audio::waveform {
 namespace {
@@ -32,8 +31,7 @@ WaveformRmsAccumulator::WaveformRmsAccumulator(
         maxSamples_,
         expectedWindowCount_ == 0 ? maxSamples_ : expectedWindowCount_
     );
-    completedBucketSquareSums_.reserve(reservedSize);
-    completedBucketLevelCounts_.reserve(reservedSize);
+    completedBuckets_.reserve(reservedSize);
 }
 
 void WaveformRmsAccumulator::addStereoFrames(
@@ -70,15 +68,11 @@ std::vector<float> WaveformRmsAccumulator::finish() {
     }
 
     std::vector<float> levels;
-    levels.reserve(completedBucketSquareSums_.size());
-    for (size_t bucket = 0;
-         bucket < completedBucketSquareSums_.size();
-         ++bucket) {
-        const size_t count = completedBucketLevelCounts_[bucket];
-        const double meanSquare = count == 0
+    levels.reserve(completedBuckets_.size());
+    for (const Bucket& bucket : completedBuckets_) {
+        const double meanSquare = bucket.levelCount == 0
             ? 0.0
-            : completedBucketSquareSums_[bucket] /
-                  static_cast<double>(count);
+            : bucket.squareSum / static_cast<double>(bucket.levelCount);
         levels.push_back(boundedLevel(
             static_cast<float>(std::sqrt(std::max(0.0, meanSquare)))
         ));
@@ -91,7 +85,7 @@ size_t WaveformRmsAccumulator::completedWindowCount() const {
 }
 
 size_t WaveformRmsAccumulator::retainedLevelCount() const {
-    return completedBucketSquareSums_.size();
+    return completedBuckets_.size();
 }
 
 size_t WaveformRmsAccumulator::framesPerWindow() const {
@@ -132,19 +126,17 @@ void WaveformRmsAccumulator::appendRmsLevel(float level) {
             maxSamples_ - 1,
             (completedWindowCount_ * maxSamples_) / expectedWindowCount_
         );
-        if (bucket == completedBucketSquareSums_.size()) {
-            completedBucketSquareSums_.push_back(levelSquare);
-            completedBucketLevelCounts_.push_back(1);
+        if (bucket == completedBuckets_.size()) {
+            completedBuckets_.push_back({levelSquare, 1});
         } else {
-            completedBucketSquareSums_[bucket] += levelSquare;
-            ++completedBucketLevelCounts_[bucket];
+            completedBuckets_[bucket].squareSum += levelSquare;
+            ++completedBuckets_[bucket].levelCount;
         }
     } else {
-        if (completedBucketSquareSums_.size() == maxSamples_) {
+        if (completedBuckets_.size() == maxSamples_) {
             compactAdjacentBuckets();
         }
-        completedBucketSquareSums_.push_back(levelSquare);
-        completedBucketLevelCounts_.push_back(1);
+        completedBuckets_.push_back({levelSquare, 1});
     }
     ++completedWindowCount_;
 }
@@ -152,58 +144,17 @@ void WaveformRmsAccumulator::appendRmsLevel(float level) {
 void WaveformRmsAccumulator::compactAdjacentBuckets() {
     size_t writeIndex = 0;
     for (size_t readIndex = 0;
-         readIndex < completedBucketSquareSums_.size();
+         readIndex < completedBuckets_.size();
          readIndex += 2) {
-        double squareSum = completedBucketSquareSums_[readIndex];
-        size_t levelCount = completedBucketLevelCounts_[readIndex];
-        if (readIndex + 1 < completedBucketSquareSums_.size()) {
-            squareSum += completedBucketSquareSums_[readIndex + 1];
-            levelCount += completedBucketLevelCounts_[readIndex + 1];
+        Bucket combined = completedBuckets_[readIndex];
+        if (readIndex + 1 < completedBuckets_.size()) {
+            combined.squareSum += completedBuckets_[readIndex + 1].squareSum;
+            combined.levelCount += completedBuckets_[readIndex + 1].levelCount;
         }
-        completedBucketSquareSums_[writeIndex] = squareSum;
-        completedBucketLevelCounts_[writeIndex] = levelCount;
+        completedBuckets_[writeIndex] = combined;
         ++writeIndex;
     }
-    completedBucketSquareSums_.resize(writeIndex);
-    completedBucketLevelCounts_.resize(writeIndex);
-}
-
-std::vector<float> WaveformRmsAccumulator::reduceRms(
-    const std::vector<float>& input,
-    size_t maxSamples
-) {
-    if (maxSamples == 0 || input.empty()) {
-        return {};
-    }
-    if (input.size() <= maxSamples) {
-        std::vector<float> bounded;
-        bounded.reserve(input.size());
-        std::transform(
-            input.begin(),
-            input.end(),
-            std::back_inserter(bounded),
-            boundedLevel
-        );
-        return bounded;
-    }
-
-    std::vector<float> reduced(maxSamples, 0.0f);
-    for (size_t bucket = 0; bucket < maxSamples; ++bucket) {
-        const size_t start = (bucket * input.size()) / maxSamples;
-        const size_t end = ((bucket + 1) * input.size()) / maxSamples;
-        double squareSum = 0.0;
-        for (size_t index = start; index < end; ++index) {
-            const double level = static_cast<double>(boundedLevel(input[index]));
-            squareSum += level * level;
-        }
-        const size_t count = end - start;
-        reduced[bucket] = count == 0
-            ? 0.0f
-            : static_cast<float>(std::sqrt(
-                  squareSum / static_cast<double>(count)
-              ));
-    }
-    return reduced;
+    completedBuckets_.resize(writeIndex);
 }
 
 } // namespace neuralsound::audio::waveform

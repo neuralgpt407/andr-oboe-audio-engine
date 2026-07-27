@@ -13,6 +13,10 @@
 #include <vector>
 
 using neuralsound::audio::waveform::SharedHandleRegistry;
+using neuralsound::audio::waveform::DecodePcm16ChunkResult;
+using neuralsound::audio::waveform::DecodePcm16EndOfStream;
+using neuralsound::audio::waveform::DecodePcm16Failure;
+using neuralsound::audio::waveform::DecodedPcm16Samples;
 using neuralsound::audio::waveform::WaveformCoreStatus;
 using neuralsound::audio::waveform::WaveformRmsAccumulator;
 using neuralsound::audio::waveform::analyzeWaveformChunks;
@@ -101,39 +105,29 @@ void testRmsWindowsIncludeSilenceAndTheFinalPartialWindow() {
     check(nearlyEqual(levels[2], 1.0f), "partial: clipped sample stays bounded");
 }
 
-void testRmsReductionUsesBoundedEnergy() {
-    const std::vector<float> input = {
-        0.0f,
-        1.0f,
-        0.0f,
-        1.0f,
-        -0.5f,
-        1.5f,
-        std::numeric_limits<float>::quiet_NaN(),
-        0.0f,
-    };
+void testStreamingReductionUsesRms() {
+    WaveformRmsAccumulator accumulator(
+        1000,
+        4,
+        8
+    );
+    std::vector<int16_t> window(32 * 2, 0);
+    for (int index = 0; index < 8; ++index) {
+        std::fill(
+            window.begin(),
+            window.end(),
+            index % 2 == 0 ? 0 : std::numeric_limits<int16_t>::min()
+        );
+        accumulator.addStereoFrames(window.data(), 32);
+    }
 
-    const std::vector<float> reduced =
-        WaveformRmsAccumulator::reduceRms(input, 4);
+    const std::vector<float> reduced = accumulator.finish();
     check(reduced.size() == 4, "reduction: output respects the requested bound");
     check(
-        nearlyEqual(reduced[0], std::sqrt(0.5f)),
-        "reduction: first bucket uses RMS"
-    );
-    check(
-        nearlyEqual(reduced[1], std::sqrt(0.5f)),
-        "reduction: second bucket uses RMS"
-    );
-    check(
-        nearlyEqual(reduced[2], std::sqrt(0.5f)),
-        "reduction: out-of-range levels are bounded before RMS"
-    );
-    check(nearlyEqual(reduced[3], 0.0f), "reduction: non-finite input becomes silence");
-    check(
         std::all_of(reduced.begin(), reduced.end(), [](float value) {
-            return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
+            return nearlyEqual(value, std::sqrt(0.5f));
         }),
-        "reduction: every output is finite and bounded"
+        "reduction: production buckets combine adjacent window levels by RMS"
     );
 }
 
@@ -193,13 +187,17 @@ void testIndependentTracksKeepAbsoluteAmplitude() {
             cancelled,
             [amplitude, &calls](int16_t* output, int) {
                 if (calls++ > 0) {
-                    return -1;
+                    return DecodePcm16ChunkResult{
+                        DecodePcm16EndOfStream{}
+                    };
                 }
                 for (int frame = 0; frame < 32; ++frame) {
                     output[frame * 2] = amplitude;
                     output[frame * 2 + 1] = amplitude;
                 }
-                return 64;
+                return DecodePcm16ChunkResult{
+                    DecodedPcm16Samples{64}
+                };
             }
         );
     };
@@ -229,7 +227,9 @@ void testCancellationStopsBeforeAnotherDecodeChunk() {
             output[0] = 1000;
             output[1] = 2000;
             cancelled.store(true, std::memory_order_release);
-            return 2;
+            return DecodePcm16ChunkResult{
+                DecodedPcm16Samples{2}
+            };
         }
     );
 
@@ -244,7 +244,11 @@ void testEmptyAndInvalidDecoderResultsAreTyped() {
         44'100,
         1024,
         cancelled,
-        [](int16_t*, int) { return -1; }
+        [](int16_t*, int) {
+            return DecodePcm16ChunkResult{
+                DecodePcm16EndOfStream{}
+            };
+        }
     );
     check(empty.status == WaveformCoreStatus::EmptyMedia, "empty: result is typed");
 
@@ -252,7 +256,11 @@ void testEmptyAndInvalidDecoderResultsAreTyped() {
         44'100,
         1024,
         cancelled,
-        [](int16_t*, int) { return -2; }
+        [](int16_t*, int) {
+            return DecodePcm16ChunkResult{
+                DecodePcm16Failure{}
+            };
+        }
     );
     check(failed.status == WaveformCoreStatus::DecodeFailed, "decoder failure: result is typed");
 
@@ -262,7 +270,9 @@ void testEmptyAndInvalidDecoderResultsAreTyped() {
         cancelled,
         [](int16_t* output, int) {
             output[0] = 1;
-            return 1;
+            return DecodePcm16ChunkResult{
+                DecodedPcm16Samples{1}
+            };
         }
     );
     check(
@@ -314,7 +324,7 @@ void testRepeatedHandleReleaseCleansUpOnceAfterInFlightWork() {
 int main() {
     testMagnitudeUsesTheLouderStereoChannel();
     testRmsWindowsIncludeSilenceAndTheFinalPartialWindow();
-    testRmsReductionUsesBoundedEnergy();
+    testStreamingReductionUsesRms();
     testLongInputRetainsAtMost1024StreamingBuckets();
     testIndependentTracksKeepAbsoluteAmplitude();
     testCancellationStopsBeforeAnotherDecodeChunk();

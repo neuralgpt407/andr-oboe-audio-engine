@@ -2,6 +2,7 @@ package com.neuralsound.audio
 
 import android.os.ParcelFileDescriptor
 import com.neuralsound.audio.internal.OboeRecorderNativeLibrary
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,23 @@ enum class NativeWaveformAnalysisError {
     NativeUnavailable,
 }
 
+internal enum class NativeWaveformFailure(val code: Int) {
+    NONE(0),
+    UNREADABLE(1),
+    UNSUPPORTED(2),
+    CORRUPT(3),
+    EMPTY_MEDIA(4),
+    CANCELLED(5),
+    INVALID_ARGUMENT(6),
+    UNKNOWN(-1);
+
+    companion object {
+        fun fromCode(code: Int): NativeWaveformFailure {
+            return entries.firstOrNull { it.code == code } ?: UNKNOWN
+        }
+    }
+}
+
 /**
  * Decodes and analyzes media entirely in native code. Analysis runs on
  * [Dispatchers.IO] by default and remains independent of the real-time Oboe
@@ -40,6 +58,8 @@ class NativeAudioWaveformAnalyzer internal constructor(
     private val nativeBridge: NativeWaveformBridge,
     private val nativeLibraryLoader: () -> Boolean,
 ) {
+    private val activeHandles = ConcurrentHashMap.newKeySet<Long>()
+
     constructor() : this(
         dispatcher = Dispatchers.IO,
         nativeBridge = JniNativeWaveformBridge,
@@ -56,6 +76,16 @@ class NativeAudioWaveformAnalyzer internal constructor(
             )
         }
         return analyzeFileDescriptor(fd, maxSamples)
+    }
+
+    /**
+     * Requests cancellation for every analysis currently owned by this
+     * analyzer. An analysis that observes the request completes with
+     * [NativeWaveformAnalysisError.Cancelled]; analyses already finishing may
+     * complete normally. Analyses started afterward are unaffected.
+     */
+    fun cancel() {
+        activeHandles.forEach(::cancelHandle)
     }
 
     internal suspend fun analyzeFileDescriptor(
@@ -96,14 +126,10 @@ class NativeAudioWaveformAnalyzer internal constructor(
                 }
                 return@suspendCancellableCoroutine
             }
+            activeHandles += handle
 
             continuation.invokeOnCancellation {
-                runCatching {
-                    nativeBridge.cancel(
-                        this@NativeAudioWaveformAnalyzer,
-                        handle,
-                    )
-                }
+                cancelHandle(handle)
             }
 
             val result = try {
@@ -113,7 +139,7 @@ class NativeAudioWaveformAnalyzer internal constructor(
                 )
                 when {
                     levels == null -> NativeWaveformAnalysisResult.Failure(
-                        nativeBridge.failureKind(
+                        nativeBridge.failure(
                             this@NativeAudioWaveformAnalyzer,
                             handle,
                         ).toAnalysisError(),
@@ -133,6 +159,7 @@ class NativeAudioWaveformAnalyzer internal constructor(
                     NativeWaveformAnalysisError.NativeUnavailable,
                 )
             } finally {
+                activeHandles -= handle
                 runCatching {
                     nativeBridge.release(
                         this@NativeAudioWaveformAnalyzer,
@@ -144,6 +171,15 @@ class NativeAudioWaveformAnalyzer internal constructor(
             if (continuation.isActive) {
                 continuation.resume(result)
             }
+        }
+    }
+
+    private fun cancelHandle(handle: Long) {
+        runCatching {
+            nativeBridge.cancel(
+                this@NativeAudioWaveformAnalyzer,
+                handle,
+            )
         }
     }
 
@@ -170,10 +206,10 @@ class NativeAudioWaveformAnalyzer internal constructor(
             handle: Long,
         ): FloatArray?
 
-        fun failureKind(
+        fun failure(
             owner: NativeAudioWaveformAnalyzer,
             handle: Long,
-        ): Int
+        ): NativeWaveformFailure
 
         fun cancel(owner: NativeAudioWaveformAnalyzer, handle: Long)
         fun release(owner: NativeAudioWaveformAnalyzer, handle: Long)
@@ -191,10 +227,14 @@ class NativeAudioWaveformAnalyzer internal constructor(
             handle: Long,
         ): FloatArray? = owner.nativeAnalyze(handle)
 
-        override fun failureKind(
+        override fun failure(
             owner: NativeAudioWaveformAnalyzer,
             handle: Long,
-        ): Int = owner.nativeGetFailureKind(handle)
+        ): NativeWaveformFailure {
+            return NativeWaveformFailure.fromCode(
+                owner.nativeGetFailureKind(handle),
+            )
+        }
 
         override fun cancel(
             owner: NativeAudioWaveformAnalyzer,
@@ -212,12 +252,14 @@ class NativeAudioWaveformAnalyzer internal constructor(
     }
 }
 
-private fun Int.toAnalysisError(): NativeWaveformAnalysisError = when (this) {
-    1 -> NativeWaveformAnalysisError.Unreadable
-    2 -> NativeWaveformAnalysisError.Unsupported
-    3 -> NativeWaveformAnalysisError.Corrupt
-    4 -> NativeWaveformAnalysisError.EmptyMedia
-    5 -> NativeWaveformAnalysisError.Cancelled
-    6 -> NativeWaveformAnalysisError.InvalidArgument
-    else -> NativeWaveformAnalysisError.Corrupt
+private fun NativeWaveformFailure.toAnalysisError(): NativeWaveformAnalysisError = when (this) {
+    NativeWaveformFailure.UNREADABLE -> NativeWaveformAnalysisError.Unreadable
+    NativeWaveformFailure.UNSUPPORTED -> NativeWaveformAnalysisError.Unsupported
+    NativeWaveformFailure.CORRUPT -> NativeWaveformAnalysisError.Corrupt
+    NativeWaveformFailure.EMPTY_MEDIA -> NativeWaveformAnalysisError.EmptyMedia
+    NativeWaveformFailure.CANCELLED -> NativeWaveformAnalysisError.Cancelled
+    NativeWaveformFailure.INVALID_ARGUMENT -> NativeWaveformAnalysisError.InvalidArgument
+    NativeWaveformFailure.NONE,
+    NativeWaveformFailure.UNKNOWN,
+    -> NativeWaveformAnalysisError.Corrupt
 }

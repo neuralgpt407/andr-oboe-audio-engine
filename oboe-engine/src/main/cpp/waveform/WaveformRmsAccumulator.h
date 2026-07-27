@@ -30,12 +30,13 @@ public:
     size_t framesPerWindow() const;
 
     static float stereoFrameMagnitude(int16_t left, int16_t right);
-    static std::vector<float> reduceRms(
-        const std::vector<float>& input,
-        size_t maxSamples
-    );
 
 private:
+    struct Bucket {
+        double squareSum;
+        size_t levelCount;
+    };
+
     void completeWindow(double squareSum, size_t frameCount);
     void appendRmsLevel(float level);
     void compactAdjacentBuckets();
@@ -46,8 +47,7 @@ private:
     size_t completedWindowCount_ = 0;
     size_t framesInWindow_ = 0;
     double currentWindowSquareSum_ = 0.0;
-    std::vector<double> completedBucketSquareSums_;
-    std::vector<size_t> completedBucketLevelCounts_;
+    std::vector<Bucket> completedBuckets_;
 };
 
 } // namespace neuralsound::audio::waveform

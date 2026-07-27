@@ -1,8 +1,10 @@
 #pragma once
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <variant>
 #include <vector>
 
 namespace neuralsound::audio::waveform {
@@ -19,9 +21,23 @@ struct WaveformCoreResult {
     std::vector<float> levels;
 };
 
-// Returns a positive interleaved-stereo sample count, zero while temporarily
-// idle, -1 at end of stream, or a value below -1 for a decoder failure.
-using DecodePcm16Chunk = std::function<int(int16_t* output, int maxSamples)>;
+struct DecodedPcm16Samples {
+    size_t sampleCount;
+};
+
+struct DecodePcm16Idle {};
+struct DecodePcm16EndOfStream {};
+struct DecodePcm16Failure {};
+
+using DecodePcm16ChunkResult = std::variant<
+    DecodedPcm16Samples,
+    DecodePcm16Idle,
+    DecodePcm16EndOfStream,
+    DecodePcm16Failure
+>;
+using DecodePcm16Chunk = std::function<
+    DecodePcm16ChunkResult(int16_t* output, int maxSamples)
+>;
 
 WaveformCoreResult analyzeWaveformChunks(
     int sampleRate,

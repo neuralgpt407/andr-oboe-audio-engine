@@ -8,14 +8,27 @@
 namespace neuralsound::audio::waveform {
 namespace {
 
-NativeWaveformFailure mapDecoderFailure(NativeAudioDecoderFailure failure) {
+enum class DecoderPhase {
+    Initialization,
+    Decoding,
+};
+
+NativeWaveformFailure mapDecoderFailure(
+    NativeAudioDecoderFailure failure,
+    DecoderPhase phase
+) {
     switch (failure) {
         case NativeAudioDecoderFailure::SourceUnavailable:
-            return NativeWaveformFailure::Unreadable;
+            // The analyzer already duplicated the caller's descriptor. A
+            // later extractor failure therefore identifies invalid media.
+            return NativeWaveformFailure::Corrupt;
         case NativeAudioDecoderFailure::InvalidFormat:
         case NativeAudioDecoderFailure::ResamplerFailure:
             return NativeWaveformFailure::Unsupported;
         case NativeAudioDecoderFailure::DecoderFailure:
+            return phase == DecoderPhase::Initialization
+                ? NativeWaveformFailure::Unsupported
+                : NativeWaveformFailure::Corrupt;
         case NativeAudioDecoderFailure::None:
             return NativeWaveformFailure::Corrupt;
     }
@@ -65,7 +78,10 @@ std::vector<float> NativeAudioWaveformAnalyzer::analyze() {
     const bool initialized = decoder.initialize(sourceFd_);
     closeSourceFd();
     if (!initialized) {
-        setFailure(mapDecoderFailure(decoder.getFailureKind()));
+        setFailure(mapDecoderFailure(
+            decoder.getFailureKind(),
+            DecoderPhase::Initialization
+        ));
         return {};
     }
 
@@ -75,11 +91,18 @@ std::vector<float> NativeAudioWaveformAnalyzer::analyze() {
         cancelled_,
         [&decoder](int16_t* output, int maxSamples) {
             const int decoded = decoder.decode(output, maxSamples);
-            if (decoded == -1 &&
-                decoder.getFailureKind() != NativeAudioDecoderFailure::None) {
-                return -2;
+            if (decoded > 0) {
+                return DecodePcm16ChunkResult{
+                    DecodedPcm16Samples{static_cast<size_t>(decoded)}
+                };
             }
-            return decoded;
+            if (decoded == 0) {
+                return DecodePcm16ChunkResult{DecodePcm16Idle{}};
+            }
+            if (decoder.getFailureKind() != NativeAudioDecoderFailure::None) {
+                return DecodePcm16ChunkResult{DecodePcm16Failure{}};
+            }
+            return DecodePcm16ChunkResult{DecodePcm16EndOfStream{}};
         },
         decoder.getDurationMs()
     );
@@ -96,7 +119,10 @@ std::vector<float> NativeAudioWaveformAnalyzer::analyze() {
             setFailure(NativeWaveformFailure::EmptyMedia);
             return {};
         case WaveformCoreStatus::DecodeFailed:
-            setFailure(mapDecoderFailure(decoder.getFailureKind()));
+            setFailure(mapDecoderFailure(
+                decoder.getFailureKind(),
+                DecoderPhase::Decoding
+            ));
             return {};
     }
 

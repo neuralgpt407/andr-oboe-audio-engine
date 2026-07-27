@@ -60,26 +60,27 @@ WaveformCoreResult analyzeWaveformChunks(
             return {WaveformCoreStatus::Cancelled, {}};
         }
 
-        const int decodedSamples = decodeChunk(
+        const DecodePcm16ChunkResult decoded = decodeChunk(
             decodeBuffer.data(),
             static_cast<int>(decodeBuffer.size())
         );
-        if (decodedSamples > 0) {
-            if (decodedSamples > static_cast<int>(decodeBuffer.size()) ||
-                (decodedSamples % 2) != 0) {
+        if (const auto* samples = std::get_if<DecodedPcm16Samples>(&decoded)) {
+            if (samples->sampleCount == 0 ||
+                samples->sampleCount > decodeBuffer.size() ||
+                (samples->sampleCount % 2) != 0) {
                 return {WaveformCoreStatus::DecodeFailed, {}};
             }
-            const size_t frames = static_cast<size_t>(decodedSamples / 2);
+            const size_t frames = samples->sampleCount / 2;
             accumulator.addStereoFrames(decodeBuffer.data(), frames);
             decodedFrames += frames;
             idleIterations = 0;
             continue;
         }
 
-        if (decodedSamples == -1) {
+        if (std::holds_alternative<DecodePcm16EndOfStream>(decoded)) {
             break;
         }
-        if (decodedSamples < -1) {
+        if (std::holds_alternative<DecodePcm16Failure>(decoded)) {
             return {WaveformCoreStatus::DecodeFailed, {}};
         }
 
