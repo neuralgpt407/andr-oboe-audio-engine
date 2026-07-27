@@ -47,7 +47,7 @@ Use the core artifact for playback and recording:
 ```kotlin
 dependencies {
     implementation(
-        "com.github.neuralgpt407.andr-oboe-audio-engine:oboe-engine:v0.1.0"
+        "com.github.neuralgpt407.andr-oboe-audio-engine:oboe-engine:v0.2.0"
     )
 }
 ```
@@ -58,7 +58,7 @@ brings `oboe-engine` transitively:
 ```kotlin
 dependencies {
     implementation(
-        "com.github.neuralgpt407.andr-oboe-audio-engine:oboe-media3:v0.1.0"
+        "com.github.neuralgpt407.andr-oboe-audio-engine:oboe-media3:v0.2.0"
     )
 }
 ```
@@ -104,11 +104,17 @@ URIs, permission UX, feature state, and session lifetime.
 `MixerState.route.deviceId` may be null briefly while a disconnected or paused
 native stream is reopening on the new output device.
 
-All stems in one mixer session must use the same sample rate and must be mono
-or stereo. The engine duplicates mono to stereo and rejects missing metadata,
-multichannel audio, and mismatched sample rates with
-`AudioFailure.UnsupportedTrackFormat`; it never mixes incompatible PCM
-frame-for-frame.
+Every successfully decoded source is normalized to one canonical 44.1 kHz
+stereo processing clock before it enters the mixer. Mono is duplicated to
+stereo, stereo preserves left and right, and sources with more than two
+channels are averaged to mono and then duplicated to stereo. A 48 kHz Original
+track and a 44.1 kHz Denoised track therefore share one duration and position
+clock through prepare, progressive append, switching, seek, effects, and
+end-of-stream.
+
+Missing or non-positive format metadata, unreadable media, decoder failures,
+and resampler failures remain typed public failures. A failed preparation
+never publishes a partially prepared set of tracks.
 
 ## Media3 synchronization
 
@@ -129,16 +135,55 @@ session.close()
 The adapter keeps video muted, follows mixer play/pause, mirrors tempo, corrects
 drift above 250 ms, and reports first-frame/aspect-ratio state.
 
+## Waveform analysis
+
+`NativeAudioWaveformAnalyzer` decodes in a background native pipeline that is
+independent of the real-time playback callback. The caller retains ownership of
+the source descriptor; the analyzer duplicates it for native work and releases
+all native resources on success, failure, or cancellation.
+
+```kotlin
+val analyzer = NativeAudioWaveformAnalyzer()
+
+val result = contentResolver.openFileDescriptor(sourceUri, "r")!!.use { source ->
+    analyzer.analyze(source)
+}
+
+when (result) {
+    is NativeWaveformAnalysisResult.Success -> render(result.levels)
+    is NativeWaveformAnalysisResult.Failure -> handle(result.error)
+}
+
+// Cancels analyses currently owned by this analyzer.
+analyzer.cancel()
+```
+
+The stable cache metadata is
+`NativeAudioWaveformAnalyzer.ALGORITHM_VERSION == 3` and
+`MAX_OUTPUT_SAMPLES == 1024`. Version 3 selects the larger absolute magnitude
+from each stereo PCM16 frame, safely handles `-32768`, and computes RMS levels
+over 32 ms windows, including the final partial window. Oversized envelopes are
+reduced by RMS to the requested bound. Tracks are not normalized against each
+other, so their absolute amplitudes remain comparable. Failures distinguish
+unreadable, unsupported, corrupt, empty, cancelled, invalid-argument, and
+native-unavailable outcomes.
+
 ## Recording
 
 The host app must request `android.permission.RECORD_AUDIO` before opening the
 mic session.
 
 ```kotlin
-val recorder = AudioEngine(applicationContext).createRecorderSession()
+val recorder = AudioEngine(applicationContext)
+    .createFramePreciseRecorderSession()
 
 recorder.startMicSession()
-recorder.startWriting(RecordingRequest(outputFile))
+recorder.startWriting(
+    FrameRecordingRequest(
+        outputFile = outputFile,
+        startOffsetFrames = cumulativePcmFrames,
+    )
+)
 val telemetry = recorder.telemetry(afterBucketIndex = 0)
 val recording = recorder.stopWriting()
 recorder.releaseMicSession()
@@ -151,12 +196,18 @@ the mic session fails instead of producing a noncanonical WAV.
 `RecordingResult` reports accepted and written frame counts so callers can
 reject incomplete files. Invalid lifecycle calls return
 `RecorderError.InvalidState`; `RecordingResult.file` is null when no output
-file was created. `RecorderSession.status` also transitions to `FAILED` when
-native capture reports a disconnect or writer overflow asynchronously.
+file was created.
+
+`FramePreciseRecorderSession.state` atomically exposes status and the matching
+typed failure. `currentFailure` is a replaying `StateFlow<RecorderFailure?>`:
+asynchronous disconnect, overflow, and writer errors are visible to late
+collectors, and an accepted new recording start clears the previous failure.
+The original `createRecorderSession()` and millisecond-oriented
+`RecordingRequest` API remain available and source-compatible.
 
 ## Release and symbols
 
-Create and push an immutable Git tag such as `v0.1.0`, then look up
+Create and push an immutable Git tag such as `v0.2.0`, then look up
 `neuralgpt407/andr-oboe-audio-engine` on
 [JitPack](https://jitpack.io/#neuralgpt407/andr-oboe-audio-engine). JitPack
 builds the two Maven publications from that tag; there is no package upload or
@@ -167,8 +218,28 @@ Use semantic versioning: patch releases for compatible fixes, minor releases
 for compatible features, and major releases for breaking public API changes.
 Never move or reuse a published tag.
 
-Consumer apps should resolve the symbol classifier into their Play/Crashlytics
-symbol packaging task instead of reading this project’s build directory.
+Consumer apps should resolve the version-matched symbol classifier into their
+Play/Crashlytics symbol packaging task instead of reading this project’s build
+directory:
+
+```kotlin
+val nativeDebugSymbols by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
+dependencies {
+    add(
+        nativeDebugSymbols.name,
+        "com.github.neuralgpt407.andr-oboe-audio-engine:" +
+            "oboe-engine:v0.2.0:native-symbols@zip"
+    )
+}
+```
+
+Wire that resolvable configuration into the consuming app's symbol-packaging
+task. The classifier contains unstripped symbols for `arm64-v8a` and
+`armeabi-v7a` and must use the same immutable version as the runtime artifact.
 
 ## Third-party code
 
