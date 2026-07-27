@@ -234,21 +234,34 @@ bool OboeRecorderEngine::openInputStream(oboe::SharingMode sharingMode) {
     }
     deviceSampleRate_ = stream->getSampleRate();
     sampleRate_.store(kOutputSampleRate, std::memory_order_release);
-    configureResampler(deviceSampleRate_);
+    if (!configureResampler(deviceSampleRate_)) {
+        stream->close();
+        return false;
+    }
     setStream(std::move(stream));
     return true;
 }
 
-void OboeRecorderEngine::configureResampler(int deviceSampleRate) {
+bool OboeRecorderEngine::configureResampler(int deviceSampleRate) {
     resampleInputScratch_.clear();
     resampleOutputScratch_.clear();
     resampledPcm16Scratch_.clear();
 
-    if (deviceSampleRate <= 0 || deviceSampleRate == kOutputSampleRate) {
-        // Device already runs at the canonical rate: record directly, no
-        // conversion needed.
+    if (deviceSampleRate <= 0) {
+        __android_log_print(
+            ANDROID_LOG_ERROR,
+            kTag,
+            "Recorder reported invalid device sample rate %d",
+            deviceSampleRate
+        );
         resampler_.reset();
-        return;
+        return false;
+    }
+
+    if (deviceSampleRate == kOutputSampleRate) {
+        // Device already runs at the canonical rate: record directly.
+        resampler_.reset();
+        return true;
     }
 
     resampler_ = neuralsound::audio::SampleRateConverter::make(
@@ -258,23 +271,23 @@ void OboeRecorderEngine::configureResampler(int deviceSampleRate) {
         neuralsound::audio::ResampleQuality::Medium
     );
     if (resampler_ == nullptr) {
-        // Could not build a converter: fall back to recording at the device
-        // rate so pitch stays correct, labeling the WAV with that rate.
+        // The public recorder contract is canonical 44.1 kHz output. Never
+        // produce a file at another rate when conversion cannot be configured.
         __android_log_print(
-            ANDROID_LOG_WARN,
+            ANDROID_LOG_ERROR,
             kTag,
-            "Failed to create resampler for %d -> %d; recording at device rate",
+            "Failed to create required resampler for %d -> %d",
             deviceSampleRate,
             kOutputSampleRate
         );
-        sampleRate_.store(deviceSampleRate, std::memory_order_release);
-        return;
+        return false;
     }
 
     const int32_t maxOutputFrames = resampler_->maxOutputFramesFor(kMaxCallbackFrames);
     resampleInputScratch_.assign(static_cast<size_t>(kMaxCallbackFrames), 0.0f);
     resampleOutputScratch_.assign(static_cast<size_t>(maxOutputFrames), 0.0f);
     resampledPcm16Scratch_.assign(static_cast<size_t>(maxOutputFrames), 0);
+    return true;
 }
 
 std::shared_ptr<oboe::AudioStream> OboeRecorderEngine::getStream() const {

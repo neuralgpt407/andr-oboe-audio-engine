@@ -7,9 +7,17 @@ import com.neuralsound.audio.RecorderStatus
 import com.neuralsound.audio.RecorderTelemetry
 import com.neuralsound.audio.RecordingRequest
 import com.neuralsound.audio.RecordingResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
@@ -27,6 +35,8 @@ internal class NativeRecorderSession internal constructor(
     private val _status = MutableStateFlow(RecorderStatus.UNAVAILABLE)
     override val status: StateFlow<RecorderStatus> = _status.asStateFlow()
     private val operationLock = ReentrantLock()
+    private val monitorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var failureMonitorJob: Job? = null
 
     @Volatile
     private var nativeAvailable = false
@@ -72,12 +82,20 @@ internal class NativeRecorderSession internal constructor(
             val unavailable = unavailableFailureOrNull()
             if (unavailable != null) return@withLock unavailable
             if (activeTake) {
-                return@withLock RecorderOperationResult.Success
+                return@withLock handle.use(
+                    RecorderOperationResult.failure(RecorderError.Released)
+                ) { currentHandle ->
+                    nativeFailureIfPresent(
+                        currentHandle = currentHandle,
+                        defaultError = RecorderError.WriterFileError,
+                    ) ?: RecorderOperationResult.Success
+                }
             }
 
             handle.use(RecorderOperationResult.failure(RecorderError.Released)) { currentHandle ->
                 if (nativeBridge.startMicSession(this, currentHandle)) {
                     _status.value = RecorderStatus.MIC_SESSION_ACTIVE
+                    ensureFailureMonitor()
                     RecorderOperationResult.Success
                 } else {
                     nativeFailure(currentHandle, RecorderError.MicSessionOpenFailed)
@@ -100,15 +118,20 @@ internal class NativeRecorderSession internal constructor(
                     "Recorder output path and start offset must be valid",
                 )
             }
+            if (activeTake) {
+                return@withLock RecorderOperationResult.failure(
+                    RecorderError.InvalidState,
+                    "stopWriting must finish the active recording before a new take starts",
+                )
+            }
 
             val outputPath = outputFile.absolutePath
             handle.use(RecorderOperationResult.failure(RecorderError.Released)) { currentHandle ->
-                activeTake = false
-                activeOutputPath = ""
                 if (nativeBridge.startWriting(this, currentHandle, outputPath, startOffsetMs)) {
                     activeOutputPath = outputPath
                     activeTake = true
                     _status.value = RecorderStatus.WRITING
+                    ensureFailureMonitor()
                     RecorderOperationResult.Success
                 } else {
                     nativeFailure(currentHandle, RecorderError.WriterFileError)
@@ -194,6 +217,8 @@ internal class NativeRecorderSession internal constructor(
 
             handle.use(RecorderOperationResult.failure(RecorderError.Released)) { currentHandle ->
                 nativeBridge.releaseMicSession(this, currentHandle)
+                failureMonitorJob?.cancel()
+                failureMonitorJob = null
                 activeTake = false
                 activeOutputPath = ""
                 _status.value = RecorderStatus.IDLE
@@ -205,6 +230,8 @@ internal class NativeRecorderSession internal constructor(
     override fun close() {
         if (!released.compareAndSet(false, true)) return
         operationLock.withLock {
+            failureMonitorJob?.cancel()
+            failureMonitorJob = null
             handle.release { currentHandle ->
                 nativeBridge.release(this, currentHandle)
             }
@@ -212,6 +239,7 @@ internal class NativeRecorderSession internal constructor(
             activeOutputPath = ""
             _status.value = RecorderStatus.RELEASED
         }
+        monitorScope.cancel()
     }
 
     private fun unavailableFailureOrNull(): RecorderOperationResult? {
@@ -244,6 +272,43 @@ internal class NativeRecorderSession internal constructor(
         val error = mapNativeError(nativeBridge.getLastFailure(this, currentHandle), defaultError)
         _status.value = RecorderStatus.FAILED
         return RecorderOperationResult.failure(error, message.ifBlank { null })
+    }
+
+    private fun ensureFailureMonitor() {
+        if (failureMonitorJob?.isActive == true) return
+        failureMonitorJob = monitorScope.launch {
+            while (isActive && !released.get()) {
+                delay(NATIVE_FAILURE_POLL_INTERVAL_MS)
+                val shouldStop = operationLock.withLock {
+                    if (
+                        released.get() ||
+                        _status.value !in setOf(
+                            RecorderStatus.MIC_SESSION_ACTIVE,
+                            RecorderStatus.WRITING,
+                        )
+                    ) {
+                        true
+                    } else {
+                        handle.use(true) { currentHandle ->
+                            if (nativeBridge.hasFailed(this@NativeRecorderSession, currentHandle)) {
+                                nativeFailure(
+                                    currentHandle = currentHandle,
+                                    defaultError = if (activeTake) {
+                                        RecorderError.WriterFileError
+                                    } else {
+                                        RecorderError.MicSessionOpenFailed
+                                    },
+                                )
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                }
+                if (shouldStop) break
+            }
+        }
     }
 
     private fun failureRecordingResult(
@@ -329,4 +394,8 @@ internal class NativeRecorderSession internal constructor(
 
     @JvmName("nativeRelease")
     internal external fun nativeRelease(handle: Long)
+
+    private companion object {
+        const val NATIVE_FAILURE_POLL_INTERVAL_MS = 50L
+    }
 }

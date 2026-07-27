@@ -83,7 +83,7 @@ private:
     static constexpr int kOutputSampleRate = 44'100;
 
     bool openInputStream(oboe::SharingMode sharingMode);
-    void configureResampler(int deviceSampleRate);
+    bool configureResampler(int deviceSampleRate);
     bool startMicSessionLocked();
     void pauseWritingLocked();
     void runWriterLoop(Pcm16WavWriter& writer);

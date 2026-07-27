@@ -128,6 +128,7 @@ class OboeRecorderEngineLifecycleTest {
         pauser.join(2_000)
 
         assertEquals(1, pauseCalls.get())
+        recorder.close()
     }
 
     @Test
@@ -142,6 +143,40 @@ class OboeRecorderEngineLifecycleTest {
         assertEquals(RecorderStatus.WRITING, recorder.status.value)
         assertEquals(0, bridge.startMicSessionCalls)
         assertTrue(recorder.pauseWriting().isSuccess)
+        recorder.close()
+    }
+
+    @Test
+    fun startingAnotherTakeBeforeStopIsRejected() {
+        val bridge = FakeRecorderNativeBridge()
+        val recorder = NativeRecorderSession(bridge) { true }
+
+        assertTrue(recorder.startWriting(RecordingRequest(File("first.wav"))).isSuccess)
+        val secondTake = recorder.startWriting(RecordingRequest(File("second.wav")))
+
+        assertFalse(secondTake.isSuccess)
+        assertEquals(RecorderError.InvalidState, secondTake.error)
+        assertEquals(1, bridge.startWritingCalls)
+        recorder.close()
+    }
+
+    @Test
+    fun asynchronousNativeFailureUpdatesObservableStatus() {
+        val bridge = FakeRecorderNativeBridge()
+        val recorder = NativeRecorderSession(bridge) { true }
+        assertTrue(recorder.startWriting(RecordingRequest(File("take.wav"))).isSuccess)
+
+        bridge.lastFailure = NativeRecorderFailure.STREAM_DISCONNECTED
+        bridge.failed.set(true)
+
+        val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (recorder.status.value != RecorderStatus.FAILED && System.nanoTime() < deadlineNanos) {
+            Thread.sleep(10)
+        }
+
+        assertEquals(RecorderStatus.FAILED, recorder.status.value)
+        assertEquals(RecorderError.StreamDisconnected, recorder.startMicSession().error)
+        recorder.close()
     }
 
     @Test
@@ -172,6 +207,7 @@ class OboeRecorderEngineLifecycleTest {
         assertTrue(recorder.startWriting(RecordingRequest(File("take.wav"))).isSuccess)
 
         assertTrue(recorder.telemetry(2)?.completedBucketRms?.isEmpty() == true)
+        recorder.close()
     }
 
     @Test
@@ -204,6 +240,7 @@ class OboeRecorderEngineLifecycleTest {
         val mismatch = recorder.stopWriting()
         assertFalse(mismatch.isSuccess)
         assertEquals(RecorderError.WriterFileError, mismatch.error)
+        recorder.close()
     }
 
     @Test
@@ -219,6 +256,7 @@ class OboeRecorderEngineLifecycleTest {
 
         assertEquals(RecorderError.WriterOverflow, result.error)
         assertFalse(result.isSuccess)
+        recorder.close()
     }
 
     private class FakeRecorderNativeBridge : OboeRecorderNativeBridge {
@@ -236,7 +274,9 @@ class OboeRecorderEngineLifecycleTest {
             partialBucketFrames = 0,
         )
         var startMicSessionCalls = 0
+        var startWritingCalls = 0
         var releaseCalls = 0
+        val failed = AtomicBoolean(false)
         var stopResult = NativeRecordingResult(
             durationMs = 0L,
             acceptedFrames = 0L,
@@ -259,6 +299,7 @@ class OboeRecorderEngineLifecycleTest {
             outputPath: String,
             startOffsetMs: Long,
         ): Boolean {
+            startWritingCalls++
             return handle == 42L && onStartWriting()
         }
 
@@ -285,7 +326,7 @@ class OboeRecorderEngineLifecycleTest {
 
         override fun getSampleRate(owner: NativeRecorderSession, handle: Long): Int = 0
 
-        override fun hasFailed(owner: NativeRecorderSession, handle: Long): Boolean = false
+        override fun hasFailed(owner: NativeRecorderSession, handle: Long): Boolean = failed.get()
 
         override fun getLastFailure(
             owner: NativeRecorderSession,
