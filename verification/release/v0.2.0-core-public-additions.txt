@@ -1,0 +1,9 @@
+com.neuralsound.audio.FramePreciseRecorderSession
+com.neuralsound.audio.FrameRecordingRequest
+com.neuralsound.audio.NativeAudioWaveformAnalyzer
+com.neuralsound.audio.NativeWaveformAnalysisError
+com.neuralsound.audio.NativeWaveformAnalysisResult
+com.neuralsound.audio.NativeWaveformAnalysisResult$Failure
+com.neuralsound.audio.NativeWaveformAnalysisResult$Success
+com.neuralsound.audio.RecorderFailure
+com.neuralsound.audio.RecorderState
