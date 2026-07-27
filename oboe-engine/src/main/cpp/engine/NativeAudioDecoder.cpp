@@ -25,15 +25,18 @@ NativeAudioDecoder::~NativeAudioDecoder() {
 
 bool NativeAudioDecoder::initialize(int fd) {
     release();
+    failureKind_ = NativeAudioDecoderFailure::None;
     dupFd_ = dup(fd);
     if (dupFd_ < 0) {
         __android_log_print(ANDROID_LOG_ERROR, kTag, "dup(fd) failed");
+        failureKind_ = NativeAudioDecoderFailure::SourceUnavailable;
         return false;
     }
 
     extractor_ = AMediaExtractor_new();
     if (extractor_ == nullptr) {
         release();
+        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
         return false;
     }
 
@@ -41,6 +44,7 @@ bool NativeAudioDecoder::initialize(int fd) {
     if (status != AMEDIA_OK) {
         logMediaStatus("setDataSourceFd", status);
         release();
+        failureKind_ = NativeAudioDecoderFailure::SourceUnavailable;
         return false;
     }
 
@@ -67,31 +71,31 @@ bool NativeAudioDecoder::initialize(int fd) {
     if (selectedFormat == nullptr || mime.empty()) {
         __android_log_print(ANDROID_LOG_ERROR, kTag, "No audio track found");
         release();
+        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
         return false;
     }
 
     int32_t sampleRate = 0;
     int32_t channelCount = 0;
     int64_t durationUs = 0;
-    if (AMediaFormat_getInt32(selectedFormat, AMEDIAFORMAT_KEY_SAMPLE_RATE, &sampleRate)) {
-        sampleRate_ = sampleRate;
-    }
-    if (AMediaFormat_getInt32(selectedFormat, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &channelCount)) {
-        channelCount_ = channelCount;
-    }
+    AMediaFormat_getInt32(selectedFormat, AMEDIAFORMAT_KEY_SAMPLE_RATE, &sampleRate);
+    AMediaFormat_getInt32(selectedFormat, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &channelCount);
     if (AMediaFormat_getInt64(selectedFormat, AMEDIAFORMAT_KEY_DURATION, &durationUs)) {
         durationMs_ = durationUs / 1000;
     }
-    if (sampleRate_ <= 0 || channelCount_ < 1 || channelCount_ > 2) {
+    if (!configureOutputFormat(sampleRate, channelCount)) {
         __android_log_print(
             ANDROID_LOG_ERROR,
             kTag,
-            "Unsupported audio format: sampleRate=%d channelCount=%d",
-            sampleRate_,
-            channelCount_
+            "Unable to normalize format: sampleRate=%d channelCount=%d",
+            sampleRate,
+            channelCount
         );
         AMediaFormat_delete(selectedFormat);
         release();
+        if (getFailureKind() == NativeAudioDecoderFailure::None) {
+            failureKind_ = NativeAudioDecoderFailure::InvalidFormat;
+        }
         return false;
     }
 
@@ -99,6 +103,7 @@ bool NativeAudioDecoder::initialize(int fd) {
     if (codec_ == nullptr) {
         AMediaFormat_delete(selectedFormat);
         release();
+        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
         return false;
     }
 
@@ -107,6 +112,7 @@ bool NativeAudioDecoder::initialize(int fd) {
     if (status != AMEDIA_OK) {
         logMediaStatus("configure", status);
         release();
+        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
         return false;
     }
 
@@ -114,6 +120,7 @@ bool NativeAudioDecoder::initialize(int fd) {
     if (status != AMEDIA_OK) {
         logMediaStatus("start", status);
         release();
+        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
         return false;
     }
 
@@ -125,6 +132,7 @@ bool NativeAudioDecoder::initialize(int fd) {
 
 int NativeAudioDecoder::decode(int16_t* output, int maxSamples) {
     if (codec_ == nullptr || output == nullptr || maxSamples <= 0) return -1;
+    if (getFailureKind() != NativeAudioDecoderFailure::None) return -1;
 
     int written = 0;
     if (!pendingBuffer_.empty()) {
@@ -201,37 +209,26 @@ int NativeAudioDecoder::drainOutput(int16_t* output, int maxSamples) {
     if (outputIndex == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
         AMediaFormat* format = AMediaCodec_getOutputFormat(codec_);
         if (format != nullptr) {
-            int32_t decodedSampleRate = sampleRate_;
-            int32_t decodedChannelCount = channelCount_;
-            AMediaFormat_getInt32(
-                format,
-                AMEDIAFORMAT_KEY_SAMPLE_RATE,
-                &decodedSampleRate
-            );
-            AMediaFormat_getInt32(
-                format,
-                AMEDIAFORMAT_KEY_CHANNEL_COUNT,
-                &decodedChannelCount
-            );
-            if (
-                decodedSampleRate != sampleRate_ ||
-                decodedChannelCount < 1 ||
-                decodedChannelCount > 2
-            ) {
+            int32_t decodedSampleRate = sourceSampleRate_;
+            int32_t decodedChannelCount = sourceChannelCount_;
+            AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_SAMPLE_RATE, &decodedSampleRate);
+            AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &decodedChannelCount);
+            if ((decodedSampleRate != sourceSampleRate_ ||
+                 decodedChannelCount != sourceChannelCount_) &&
+                !configureOutputFormat(decodedSampleRate, decodedChannelCount)) {
                 __android_log_print(
                     ANDROID_LOG_ERROR,
                     kTag,
-                    "Decoder output format changed to unsupported sampleRate=%d channelCount=%d",
+                    "Unable to normalize changed decoder format: sampleRate=%d channelCount=%d",
                     decodedSampleRate,
                     decodedChannelCount
                 );
-                isEndOfStream_ = true;
-            } else {
-                channelCount_ = decodedChannelCount;
+                AMediaFormat_delete(format);
+                return -1;
             }
             AMediaFormat_delete(format);
         }
-        return isEndOfStream_ ? -1 : 0;
+        return 0;
     }
     if (outputIndex < 0) return 0;
 
@@ -241,56 +238,91 @@ int NativeAudioDecoder::drainOutput(int16_t* output, int maxSamples) {
     if (buffer != nullptr && info.size > 0) {
         const auto* samples = reinterpret_cast<int16_t*>(buffer + info.offset);
         const int inputSamples = info.size / static_cast<int>(sizeof(int16_t));
-        pendingBuffer_.clear();
-        pendingOffset_ = 0;
+        const int sourceChannels = std::max(1, sourceChannelCount_);
+        const int inputFrames = inputSamples / sourceChannels;
+        int firstInputFrame = 0;
 
-        if (channelCount_ == 1) {
-            pendingBuffer_.reserve(inputSamples * 2);
-            for (int i = 0; i < inputSamples; ++i) {
-                pendingBuffer_.push_back(samples[i]);
-                pendingBuffer_.push_back(samples[i]);
-            }
-        } else {
-            pendingBuffer_.assign(samples, samples + inputSamples);
-        }
-
-        const int outputChannelCount = channelCount_ == 1 ? 2 : std::max(1, channelCount_);
-        if (trimBeforeUs_ >= 0 && sampleRate_ > 0 && info.presentationTimeUs >= 0) {
-            const int64_t frameCount = static_cast<int64_t>(pendingBuffer_.size()) / outputChannelCount;
-            const int64_t bufferEndUs = info.presentationTimeUs + (frameCount * 1000000LL) / sampleRate_;
+        if (trimBeforeUs_ >= 0 && sourceSampleRate_ > 0 && info.presentationTimeUs >= 0) {
+            const int64_t bufferEndUs =
+                info.presentationTimeUs +
+                (static_cast<int64_t>(inputFrames) * 1000000LL) / sourceSampleRate_;
             if (bufferEndUs <= trimBeforeUs_) {
                 clearPending();
             } else {
                 if (info.presentationTimeUs < trimBeforeUs_) {
                     const int64_t framesToDrop =
-                        ((trimBeforeUs_ - info.presentationTimeUs) * sampleRate_) / 1000000LL;
-                    pendingOffset_ = std::min(
-                        static_cast<size_t>(std::max<int64_t>(0, framesToDrop) * outputChannelCount),
-                        pendingBuffer_.size()
-                    );
+                        ((trimBeforeUs_ - info.presentationTimeUs) * sourceSampleRate_) / 1000000LL;
+                    firstInputFrame = static_cast<int>(std::min(
+                        static_cast<int64_t>(inputFrames),
+                        std::max<int64_t>(0, framesToDrop)
+                    ));
                 }
                 trimBeforeUs_ = -1;
+                const int32_t normalizedFrames = outputNormalizer_.process(
+                    samples + firstInputFrame * sourceChannels,
+                    inputFrames - firstInputFrame,
+                    pendingBuffer_
+                );
+                if (normalizedFrames < 0) {
+                    failureKind_ = NativeAudioDecoderFailure::ResamplerFailure;
+                }
+                pendingOffset_ = 0;
             }
+        } else {
+            const int32_t normalizedFrames =
+                outputNormalizer_.process(samples, inputFrames, pendingBuffer_);
+            if (normalizedFrames < 0) {
+                failureKind_ = NativeAudioDecoderFailure::ResamplerFailure;
+            }
+            pendingOffset_ = 0;
         }
 
-        const size_t available = pendingBuffer_.size() - pendingOffset_;
-        const size_t copyCount = std::min(available, static_cast<size_t>(maxSamples));
-        if (copyCount > 0) {
-            std::memcpy(output, pendingBuffer_.data() + pendingOffset_, copyCount * sizeof(int16_t));
+        if (!pendingBuffer_.empty()) {
+            const size_t available = pendingBuffer_.size() - pendingOffset_;
+            const size_t copyCount = std::min(available, static_cast<size_t>(maxSamples));
+            if (copyCount > 0) {
+                std::memcpy(
+                    output,
+                    pendingBuffer_.data() + pendingOffset_,
+                    copyCount * sizeof(int16_t)
+                );
+            }
+            copied = static_cast<int>(copyCount);
+            pendingOffset_ += copyCount;
+            if (pendingOffset_ >= pendingBuffer_.size()) {
+                clearPending();
+            }
         }
-        copied = static_cast<int>(copyCount);
-        pendingOffset_ += copyCount;
-        if (pendingOffset_ >= pendingBuffer_.size()) {
-            clearPending();
-        }
+    } else if (info.size > 0) {
+        __android_log_print(ANDROID_LOG_ERROR, kTag, "Codec returned a null output buffer");
+        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
     }
 
     if ((info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0) {
         isEndOfStream_ = true;
     }
-    AMediaCodec_releaseOutputBuffer(codec_, outputIndex, false);
+    const media_status_t releaseStatus =
+        AMediaCodec_releaseOutputBuffer(codec_, outputIndex, false);
+    if (releaseStatus != AMEDIA_OK) {
+        logMediaStatus("releaseOutputBuffer", releaseStatus);
+        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
+    }
     if (copied > 0) return copied;
-    return isEndOfStream_ ? -1 : 0;
+    return (isEndOfStream_ || getFailureKind() != NativeAudioDecoderFailure::None) ? -1 : 0;
+}
+
+bool NativeAudioDecoder::configureOutputFormat(int sampleRate, int channelCount) {
+    if (sampleRate <= 0 || channelCount <= 0) {
+        failureKind_ = NativeAudioDecoderFailure::InvalidFormat;
+        return false;
+    }
+    if (!outputNormalizer_.configure(sampleRate, channelCount)) {
+        failureKind_ = NativeAudioDecoderFailure::ResamplerFailure;
+        return false;
+    }
+    sourceSampleRate_ = sampleRate;
+    sourceChannelCount_ = channelCount;
+    return true;
 }
 
 bool NativeAudioDecoder::seekTo(int64_t ms) {
@@ -300,7 +332,14 @@ bool NativeAudioDecoder::seekTo(int64_t ms) {
 bool NativeAudioDecoder::seekToUs(int64_t us) {
     if (extractor_ == nullptr || codec_ == nullptr) return false;
     AMediaExtractor_seekTo(extractor_, us, AMEDIAEXTRACTOR_SEEK_PREVIOUS_SYNC);
-    AMediaCodec_flush(codec_);
+    if (AMediaCodec_flush(codec_) != AMEDIA_OK) {
+        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
+        return false;
+    }
+    if (!outputNormalizer_.reset()) {
+        failureKind_ = NativeAudioDecoderFailure::ResamplerFailure;
+        return false;
+    }
     trimBeforeUs_ = us;
     inputDone_ = false;
     isEndOfStream_ = false;
@@ -310,6 +349,7 @@ bool NativeAudioDecoder::seekToUs(int64_t us) {
 
 void NativeAudioDecoder::release() {
     clearPending();
+    outputNormalizer_.release();
     if (codec_ != nullptr) {
         AMediaCodec_stop(codec_);
         AMediaCodec_delete(codec_);
@@ -326,8 +366,8 @@ void NativeAudioDecoder::release() {
     inputDone_ = false;
     isEndOfStream_ = false;
     trimBeforeUs_ = -1;
-    sampleRate_ = 0;
-    channelCount_ = 0;
+    sourceSampleRate_ = 0;
+    sourceChannelCount_ = 0;
     durationMs_ = 0;
 }
 

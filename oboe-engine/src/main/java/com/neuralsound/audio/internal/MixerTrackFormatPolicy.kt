@@ -17,21 +17,24 @@ internal data class MixerTrackFormatProblem(
 )
 
 internal object MixerTrackFormatPolicy {
+    const val CANONICAL_SAMPLE_RATE = 44_100
+
     fun findProblem(
         formats: List<Pair<TrackId, DecodedAudioFormat>>,
     ): MixerTrackFormatProblem? {
-        val requiredSampleRate = formats.firstOrNull()?.second?.sampleRate
         return formats.firstNotNullOfOrNull { (trackId, format) ->
             val hasSupportedShape = format.sampleRate != null &&
                 format.sampleRate > 0 &&
                 format.channelCount != null &&
-                format.channelCount in 1..2
-            val matchesMixerRate = requiredSampleRate == null ||
-                format.sampleRate == requiredSampleRate
-            if (hasSupportedShape && matchesMixerRate) {
+                format.channelCount > 0
+            if (hasSupportedShape) {
                 null
             } else {
-                MixerTrackFormatProblem(trackId, format, requiredSampleRate)
+                MixerTrackFormatProblem(
+                    trackId = trackId,
+                    format = format,
+                    requiredSampleRate = CANONICAL_SAMPLE_RATE,
+                )
             }
         }
     }

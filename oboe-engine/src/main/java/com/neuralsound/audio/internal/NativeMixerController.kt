@@ -46,7 +46,7 @@ private class MixerPreparationException(
 
 internal class NativeMixerController(
     context: Context
-) {
+) : MixerController {
     private val context = context.applicationContext
     private val tag = "OboeNativeMixerController"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -86,7 +86,7 @@ internal class NativeMixerController(
     @Volatile private var deviceCallbackRegistered = false
     private val outputTopologyRevision = AtomicLong(0L)
     private val _routeRevision = MutableStateFlow(0L)
-    val routeRevision: StateFlow<Long> = _routeRevision.asStateFlow()
+    override val routeRevision: StateFlow<Long> = _routeRevision.asStateFlow()
     private var knownOutputDeviceIds: Set<Int>? = null
     private val deviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
@@ -102,6 +102,7 @@ internal class NativeMixerController(
     private var lifecycleJob: Job? = null
 
     private val trackStates = mutableMapOf<TrackId, MixerTrackState>()
+    private val decodedTrackFormats = mutableMapOf<TrackId, DecodedAudioFormat>()
     private val trackTypeOrder = mutableListOf<TrackId>()
     private val isSeeking = AtomicBoolean(false)
     private val isInitialized = AtomicBoolean(false)
@@ -112,13 +113,13 @@ internal class NativeMixerController(
     private var tempoApplyJob: Job? = null
     private var routeMonitorJob: Job? = null
     private val engine = EngineHandle()
+    private val resourceLifecycleLock = Any()
+    private val engineGeneration = AtomicLong(0L)
     private var durationMs: Long = 0L
-    @Volatile
-    private var mixerSampleRate: Int = 0
     private var lastNativeTempoSpeed: Float = PlaybackEffects.DEFAULT_TEMPO
 
     private val _isPlaying = MutableStateFlow(false)
-    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+    override val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
     private val playbackCommands by lazy {
         MixerPlaybackCommandExecutor(
@@ -133,18 +134,21 @@ internal class NativeMixerController(
     private val _isSyncing = MutableStateFlow(false)
 
     private val _currentPosition = MutableStateFlow(0L)
-    val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()
+    override val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()
 
     private val _totalDuration = MutableStateFlow(0L)
-    val totalDuration: StateFlow<Long> = _totalDuration.asStateFlow()
+    override val totalDuration: StateFlow<Long> = _totalDuration.asStateFlow()
 
     private val _tempoSpeed = MutableStateFlow(PlaybackEffects.DEFAULT_TEMPO)
-    val tempoSpeed: StateFlow<Float> = _tempoSpeed.asStateFlow()
+    override val tempoSpeed: StateFlow<Float> = _tempoSpeed.asStateFlow()
 
     private val _pitchSemitones = MutableStateFlow(PlaybackEffects.DEFAULT_PITCH_SEMITONES)
-    val pitchSemitones: StateFlow<Int> = _pitchSemitones.asStateFlow()
+    override val pitchSemitones: StateFlow<Int> = _pitchSemitones.asStateFlow()
 
-    fun currentRoutedOutputDeviceId(): Int? {
+    private val _runtimeFailure = MutableStateFlow<AudioFailure?>(null)
+    override val runtimeFailure: StateFlow<AudioFailure?> = _runtimeFailure.asStateFlow()
+
+    override fun currentRoutedOutputDeviceId(): Int? {
         val nativeDeviceId = engine.use(0) { handle -> nativeGetOutputDeviceId(handle) }
         val availableDeviceIds = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             .asSequence()
@@ -154,16 +158,16 @@ internal class NativeMixerController(
         return OutputRoutePolicy.availableDeviceId(nativeDeviceId, availableDeviceIds)
     }
 
-    fun currentRoutedOutputDeviceType(deviceId: Int? = currentRoutedOutputDeviceId()): Int? {
+    override fun currentRoutedOutputDeviceType(deviceId: Int?): Int? {
         deviceId ?: return null
         return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             .firstOrNull { device -> device.isSink && device.id == deviceId }
             ?.type
     }
 
-    fun currentOutputTopologyRevision(): Long = outputTopologyRevision.get()
+    override fun currentOutputTopologyRevision(): Long = outputTopologyRevision.get()
 
-    fun setPlaybackRange(range: PlaybackRange?) {
+    override fun setPlaybackRange(range: PlaybackRange?) {
         val normalizedRange = if (range != null && durationMs > 0L) {
             range.clampTo(durationMs)
         } else {
@@ -178,14 +182,14 @@ internal class NativeMixerController(
         }
     }
 
-    suspend fun preparePlayers(
+    override suspend fun preparePlayers(
         tracks: Map<TrackId, Uri>,
         startPositionMs: Long,
-        looping: Boolean = false,
-        effects: PlaybackEffects = PlaybackEffects(),
-        trackOffsetsMs: Map<TrackId, Long> = emptyMap(),
-        initialVolumes: Map<TrackId, Float> = emptyMap(),
-        initialChannelGains: Map<TrackId, ChannelGain> = emptyMap(),
+        looping: Boolean,
+        effects: PlaybackEffects,
+        trackOffsetsMs: Map<TrackId, Long>,
+        initialVolumes: Map<TrackId, Float>,
+        initialChannelGains: Map<TrackId, ChannelGain>,
     ): MixerPreparationResult {
         if (tracks.isEmpty()) {
             return MixerPreparationResult.Failure("no tracks were supplied")
@@ -225,6 +229,7 @@ internal class NativeMixerController(
         forceSeek: Boolean,
     ): MixerPreparationResult {
         releaseResourcesImmediate(resetPlaybackState = startPositionMs <= 0L)
+        _runtimeFailure.value = null
         isLooping = looping
         _tempoSpeed.value = effects.tempo
         _pitchSemitones.value = effects.pitchSemitones
@@ -282,15 +287,38 @@ internal class NativeMixerController(
                             channelCount = problem.format.channelCount,
                             requiredSampleRate = problem.requiredSampleRate,
                         ),
-                        message = "Track ${problem.trackId} must be mono/stereo and use the mixer sample rate",
+                        message = "Track ${problem.trackId} is missing valid audio format metadata",
                     )
                 }
-                mixerSampleRate = checkNotNull(trackFormats.first().second.sampleRate)
-
+                val failureTracks = trackFormats.map { (trackId, format) ->
+                    MixerTrackFailureContext(
+                        id = trackId,
+                        uriString = tracks.getValue(trackId).toString(),
+                        format = format,
+                    )
+                }
                 val handle = nativeCreate()
-                if (handle == 0L || !nativeInitializeTracks(handle, fds, durations, tracks.size)) {
+                val initialized = handle != 0L &&
+                    nativeInitializeTracks(handle, fds, durations, tracks.size)
+                if (!initialized) {
+                    val failure = if (handle == 0L) {
+                        AudioFailure.NativeOperationFailed(
+                            operation = "prepare",
+                            detail = "Native mixer handle creation failed",
+                        )
+                    } else {
+                        MixerNativeFailurePolicy.toPublicFailure(
+                            failure = NativeMixerFailureSnapshot.decode(
+                                nativeGetLastFailure(handle)
+                            ),
+                            tracks = failureTracks,
+                        )
+                    }
                     if (handle != 0L) nativeRelease(handle)
-                    throw IllegalStateException("Native Oboe engine initialization failed")
+                    throw MixerPreparationException(
+                        failure = failure,
+                        message = "Native Oboe engine initialization failed",
+                    )
                 }
                 // Publish so release/seek paths see a live engine. The rest of
                 // setup runs on the local handle: the lifecycleJob chain
@@ -305,6 +333,8 @@ internal class NativeMixerController(
                     trackTypeOrder.addAll(tracks.keys)
                     trackStates.clear()
                     trackStates.putAll(newStates)
+                    decodedTrackFormats.clear()
+                    decodedTrackFormats.putAll(trackFormats)
                 }
 
                 durationMs = nativeGetDurationMs(handle)
@@ -332,8 +362,21 @@ internal class NativeMixerController(
                 lastNativeTempoSpeed = _tempoSpeed.value
                 nativeSetPitchSemitones(handle, _pitchSemitones.value)
 
-                if (forceSeek || clampedStart > 0L) {
+                val seekCompleted = if (forceSeek || clampedStart > 0L) {
                     nativeSeekTo(handle, clampedStart)
+                } else {
+                    true
+                }
+                if (!seekCompleted) {
+                    throw MixerPreparationException(
+                        failure = MixerNativeFailurePolicy.toPublicFailure(
+                            failure = NativeMixerFailureSnapshot.decode(
+                                nativeGetLastFailure(handle)
+                            ),
+                            tracks = failureTracks,
+                        ),
+                        message = "Native decoder reset failed",
+                    )
                 }
 
                 startPositionUpdateLoop()
@@ -348,7 +391,7 @@ internal class NativeMixerController(
                 MixerPreparationPolicy.result(
                     initialized = true,
                     offsetsApplied = true,
-                    seekCompleted = !forceSeek || clampedStart >= 0L,
+                    seekCompleted = seekCompleted,
                 )
         } catch (e: Exception) {
             Log.e(tag, "Error initializing Oboe mixer", e)
@@ -362,12 +405,13 @@ internal class NativeMixerController(
         }
     }
 
-    fun appendTrack(
+    @Synchronized
+    override fun appendTrack(
         type: TrackId,
         uri: Uri,
         initialVolume: Float,
         muted: Boolean,
-        initialChannelGain: ChannelGain = ChannelGain.Center,
+        initialChannelGain: ChannelGain,
     ): MixerAppendResult {
         if (!nativeLibraryAvailable || !engine.isActive || !isInitialized.get()) {
             return MixerAppendResult.Failure(AudioFailure.EngineInactive)
@@ -407,20 +451,13 @@ internal class NativeMixerController(
                 sampleRate = null,
                 channelCount = null,
             )
-            if (
-                format.sampleRate == null ||
-                format.sampleRate <= 0 ||
-                format.channelCount == null ||
-                format.channelCount !in 1..2 ||
-                mixerSampleRate <= 0 ||
-                format.sampleRate != mixerSampleRate
-            ) {
+            MixerTrackFormatPolicy.findProblem(listOf(type to format))?.let { problem ->
                 return@use MixerAppendResult.Failure(
                     AudioFailure.UnsupportedTrackFormat(
                         trackId = type,
                         sampleRate = format.sampleRate,
                         channelCount = format.channelCount,
-                        requiredSampleRate = mixerSampleRate.takeIf { rate -> rate > 0 },
+                        requiredSampleRate = problem.requiredSampleRate,
                     )
                 )
             }
@@ -444,6 +481,7 @@ internal class NativeMixerController(
                         initialMuted = muted,
                         initialChannelGain = initialChannelGain,
                     )
+                    decodedTrackFormats[type] = format
                 }
                 durationMs = engine.use(durationMs) { handle -> nativeGetDurationMs(handle) }
                 _totalDuration.value = durationMs
@@ -451,14 +489,27 @@ internal class NativeMixerController(
             if (appended) {
                 MixerAppendResult.Success
             } else {
+                val nativeFailure = engine.use(NativeMixerFailureSnapshot(0, -1)) { handle ->
+                    val failure = NativeMixerFailureSnapshot.decode(nativeGetLastFailure(handle))
+                    nativeClearLastFailure(handle)
+                    failure
+                }
                 MixerAppendResult.Failure(
-                    AudioFailure.NativeOperationFailed(operation = "appendTrack")
+                    MixerNativeFailurePolicy.toPublicFailure(
+                        failure = nativeFailure,
+                        tracks = failureContexts() + MixerTrackFailureContext(
+                            id = type,
+                            uriString = uri.toString(),
+                            format = format,
+                        ),
+                        fallbackOperation = "appendTrack",
+                    )
                 )
             }
         }
     }
 
-    fun play(): MixerPlaybackResult {
+    override fun play(): MixerPlaybackResult {
         if (!isInitialized.get() || !engine.isActive) {
             return playbackCommands.play(
                 isPrepared = isInitialized.get(),
@@ -482,9 +533,9 @@ internal class NativeMixerController(
         return startPlayback(explicitPlayIntent = true)
     }
 
-    fun pause(): MixerPlaybackResult = pausePlayback()
+    override fun pause(): MixerPlaybackResult = pausePlayback()
 
-    fun setVolume(type: TrackId, volume: Float) {
+    override fun setVolume(type: TrackId, volume: Float) {
         val state = synchronized(this) { trackStates[type] } ?: return
         state.setVolume(volume)
         trackIndexOf(type)?.let { index ->
@@ -495,7 +546,7 @@ internal class NativeMixerController(
         }
     }
 
-    fun setChannelGain(type: TrackId, channelGain: ChannelGain) {
+    override fun setChannelGain(type: TrackId, channelGain: ChannelGain) {
         val state = synchronized(this) { trackStates[type] } ?: return
         state.setChannelGain(channelGain)
         trackIndexOf(type)?.let { index ->
@@ -510,7 +561,7 @@ internal class NativeMixerController(
         }
     }
 
-    fun setMuted(type: TrackId, muted: Boolean) {
+    override fun setMuted(type: TrackId, muted: Boolean) {
         val state = synchronized(this) { trackStates[type] } ?: return
         state.setMuted(muted)
         trackIndexOf(type)?.let { index ->
@@ -518,7 +569,7 @@ internal class NativeMixerController(
         }
     }
 
-    fun setTrackOffset(type: TrackId, offsetMs: Long) {
+    override fun setTrackOffset(type: TrackId, offsetMs: Long) {
         val state = synchronized(this) { trackStates[type] } ?: return
         state.setOffset(offsetMs)
         trackIndexOf(type)?.let { index ->
@@ -526,7 +577,7 @@ internal class NativeMixerController(
         }
     }
 
-    fun setTempo(speed: Float) {
+    override fun setTempo(speed: Float) {
         val clampedSpeed = speed.coerceIn(
             PlaybackEffects.MIN_TEMPO,
             PlaybackEffects.MAX_TEMPO
@@ -540,7 +591,7 @@ internal class NativeMixerController(
         scheduleNativeTempoApply(clampedSpeed)
     }
 
-    fun setPitchSemitones(semitones: Int) {
+    override fun setPitchSemitones(semitones: Int) {
         val clampedSemitones = semitones.coerceIn(
             PlaybackEffects.MIN_PITCH_SEMITONES,
             PlaybackEffects.MAX_PITCH_SEMITONES
@@ -554,11 +605,11 @@ internal class NativeMixerController(
         engine.use { handle -> nativeSetPitchSemitones(handle, clampedSemitones) }
     }
 
-    fun setLooping(looping: Boolean) {
+    override fun setLooping(looping: Boolean) {
         isLooping = looping
     }
 
-    fun seekToMs(positionMs: Long): Boolean {
+    override fun seekToMs(positionMs: Long): Boolean {
         if (!isInitialized.get() || durationMs <= 0L) return false
         seekToPosition(
             PlaybackRangePolicy.seekTarget(positionMs, activePlaybackRange, durationMs)
@@ -566,7 +617,7 @@ internal class NativeMixerController(
         return true
     }
 
-    fun snapshotTracks(): Map<TrackId, PublicMixerTrackState> = synchronized(this) {
+    override fun snapshotTracks(): Map<TrackId, PublicMixerTrackState> = synchronized(this) {
         trackStates.mapValues { (_, state) ->
             PublicMixerTrackState(
                 mix = TrackMix(
@@ -579,11 +630,11 @@ internal class NativeMixerController(
         }
     }
 
-    fun currentPlaybackRange(): PlaybackRange? = activePlaybackRange
+    override fun currentPlaybackRange(): PlaybackRange? = activePlaybackRange
 
-    fun isPrepared(): Boolean = isInitialized.get() && engine.isActive
+    override fun isPrepared(): Boolean = isInitialized.get() && engine.isActive
 
-    fun closeNow() {
+    override fun closeNow() {
         lifecycleJob?.cancel()
         releaseResourcesImmediate()
         scope.cancel()
@@ -651,17 +702,24 @@ internal class NativeMixerController(
             return
         }
         _isSyncing.value = true
+        val seekGeneration = engineGeneration.get()
         scope.launch {
             try {
                 // Hold the shared lock for the full native seek so the engine
                 // cannot be released (deleted) mid-call. This closes the
                 // use-after-free that crashed in OboeAudioEngine::seekTo.
-                engine.use { handle -> nativeSeekTo(handle, targetMs) }
-                _currentPosition.value = targetMs
+                val seekCompleted = engine.use(false) { handle ->
+                    nativeSeekTo(handle, targetMs)
+                }
+                if (seekCompleted && seekGeneration == engineGeneration.get()) {
+                    _currentPosition.value = targetMs
+                } else if (seekGeneration == engineGeneration.get()) {
+                    publishRuntimeFailureIfNeeded(seekGeneration)
+                }
             } catch (e: Exception) {
                 Log.e(tag, "Seek error", e)
             } finally {
-                finishSeek()
+                finishSeek(seekGeneration)
             }
         }
     }
@@ -673,7 +731,8 @@ internal class NativeMixerController(
         }
     }
 
-    private fun finishSeek() {
+    private fun finishSeek(seekGeneration: Long) {
+        if (seekGeneration != engineGeneration.get()) return
         _isSyncing.value = false
         isSeeking.set(false)
         val queuedRequest = synchronized(this) {
@@ -691,10 +750,12 @@ internal class NativeMixerController(
 
     private fun startPositionUpdateLoop() {
         positionUpdateJob?.cancel()
+        val positionGeneration = engineGeneration.get()
         positionUpdateJob = scope.launch {
-            while (isActive) {
+            while (isActive && positionGeneration == engineGeneration.get()) {
                 if (!isSeeking.get()) {
                     val pos = engine.use(-1L) { handle -> nativeGetPositionMs(handle) }
+                    if (positionGeneration != engineGeneration.get()) return@launch
                     if (pos >= 0L) {
                         _currentPosition.value = pos
                         if (
@@ -705,9 +766,43 @@ internal class NativeMixerController(
                             handlePlaybackComplete()
                         }
                     }
+                    publishRuntimeFailureIfNeeded(positionGeneration)
                 }
                 delay(40)
             }
+        }
+    }
+
+    private fun publishRuntimeFailureIfNeeded(expectedGeneration: Long) {
+        if (expectedGeneration != engineGeneration.get()) return
+        if (_runtimeFailure.value != null) return
+        val nativeFailure = engine.use(NativeMixerFailureSnapshot(0, -1)) { handle ->
+            NativeMixerFailureSnapshot.decode(nativeGetLastFailure(handle))
+        }
+        if (expectedGeneration != engineGeneration.get()) return
+        if (!nativeFailure.isFailure) return
+        val failure = MixerNativeFailurePolicy.toPublicFailure(
+            failure = nativeFailure,
+            tracks = failureContexts(),
+        )
+        synchronized(resourceLifecycleLock) {
+            if (expectedGeneration != engineGeneration.get()) return
+            pausePlayback()
+            if (_runtimeFailure.compareAndSet(expect = null, update = failure)) {
+                releaseResourcesImmediate()
+            }
+        }
+    }
+
+    private fun failureContexts(): List<MixerTrackFailureContext> = synchronized(this) {
+        trackTypeOrder.mapNotNull { trackId ->
+            val state = trackStates[trackId] ?: return@mapNotNull null
+            val format = decodedTrackFormats[trackId] ?: return@mapNotNull null
+            MixerTrackFailureContext(
+                id = trackId,
+                uriString = state.uri.toString(),
+                format = format,
+            )
         }
     }
 
@@ -756,38 +851,42 @@ internal class NativeMixerController(
     }
 
     private fun releaseResourcesImmediate(resetPlaybackState: Boolean = true) {
-        isInitialized.set(false)
-        isLooping = false
-        synchronized(this) {
-            queuedSeekRequest = null
-        }
-        tempoApplyJob?.cancel()
-        tempoApplyJob = null
-        routeMonitorJob?.cancel()
-        routeMonitorJob = null
-        positionUpdateJob?.cancel()
-        positionUpdateJob = null
-        // Exclusive lock: blocks until any in-flight native call (seek/play/
-        // pause/etc.) finishes before deleting the engine, preventing the
-        // use-after-free crash.
-        engine.release { handle -> nativeRelease(handle) }
-        mixerSampleRate = 0
-        synchronized(this) {
-            trackStates.clear()
-            trackTypeOrder.clear()
-        }
-        if (resetPlaybackState) {
-            durationMs = 0L
-            lastNativeTempoSpeed = PlaybackEffects.DEFAULT_TEMPO
-        }
-        unregisterNoisyReceiver()
-        unregisterDeviceCallback()
-        abandonAudioFocus()
-        pausedByFocus = false
-        isDucked = false
-        if (resetPlaybackState) {
-            playbackCommands.clearPlaybackIntent()
-            resetStates()
+        synchronized(resourceLifecycleLock) {
+            engineGeneration.incrementAndGet()
+            isInitialized.set(false)
+            isLooping = false
+            isSeeking.set(false)
+            synchronized(this) {
+                queuedSeekRequest = null
+            }
+            tempoApplyJob?.cancel()
+            tempoApplyJob = null
+            routeMonitorJob?.cancel()
+            routeMonitorJob = null
+            positionUpdateJob?.cancel()
+            positionUpdateJob = null
+            // Exclusive lock: blocks until any in-flight native call (seek/play/
+            // pause/etc.) finishes before deleting the engine, preventing the
+            // use-after-free crash.
+            engine.release { handle -> nativeRelease(handle) }
+            synchronized(this) {
+                trackStates.clear()
+                decodedTrackFormats.clear()
+                trackTypeOrder.clear()
+            }
+            if (resetPlaybackState) {
+                durationMs = 0L
+                lastNativeTempoSpeed = PlaybackEffects.DEFAULT_TEMPO
+            }
+            unregisterNoisyReceiver()
+            unregisterDeviceCallback()
+            abandonAudioFocus()
+            pausedByFocus = false
+            isDucked = false
+            if (resetPlaybackState) {
+                playbackCommands.clearPlaybackIntent()
+                resetStates()
+            }
         }
     }
 
@@ -981,7 +1080,7 @@ internal class NativeMixerController(
     private external fun nativePlay(handle: Long): Boolean
     private external fun nativeIsPlaying(handle: Long): Boolean
     private external fun nativePause(handle: Long)
-    private external fun nativeSeekTo(handle: Long, ms: Long)
+    private external fun nativeSeekTo(handle: Long, ms: Long): Boolean
     private external fun nativeOnDeviceChanged(handle: Long)
     private external fun nativeSetVolume(handle: Long, trackIndex: Int, volume: Float)
     private external fun nativeSetMute(handle: Long, trackIndex: Int, muted: Boolean)
@@ -992,6 +1091,8 @@ internal class NativeMixerController(
     private external fun nativeGetPositionMs(handle: Long): Long
     private external fun nativeGetDurationMs(handle: Long): Long
     private external fun nativeGetOutputDeviceId(handle: Long): Int
+    private external fun nativeGetLastFailure(handle: Long): Long
+    private external fun nativeClearLastFailure(handle: Long)
     private external fun nativeRelease(handle: Long)
 
     companion object {

@@ -35,7 +35,9 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
     shuttingDown_.store(false, std::memory_order_release);
     restartPending_.store(false, std::memory_order_release);
     streamNeedsReopen_.store(false, std::memory_order_release);
+    lastFailure_.store(NativeAudioFailureSnapshot{}.encode(), std::memory_order_release);
     if (fds == nullptr || trackCount <= 0 || trackCount > kMaxTracks) return false;
+    sampleRate_ = neuralsound::audio::DecodedAudioNormalizer::kOutputSampleRate;
 
     for (int i = 0; i < kMaxTracks; ++i) {
         volumes_[i].store(1.0f, std::memory_order_relaxed);
@@ -60,20 +62,11 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
         for (int i = 0; i < trackCount; ++i) {
             auto thread = std::make_unique<NativeDecoderThread>();
             if (!thread->initialize(fds[i])) {
-                __android_log_print(ANDROID_LOG_ERROR, kTag, "Decoder init failed for track %d", i);
-                return false;
-            }
-            if (i == 0) {
-                sampleRate_ = thread->getSampleRate();
-            } else if (thread->getSampleRate() != sampleRate_) {
-                __android_log_print(
-                    ANDROID_LOG_ERROR,
-                    kTag,
-                    "Track %d sample rate %d does not match mixer rate %d",
-                    i,
-                    thread->getSampleRate(),
-                    sampleRate_
+                lastFailure_.store(
+                    NativeAudioFailureSnapshot{thread->getFailureKind(), i}.encode(),
+                    std::memory_order_release
                 );
+                __android_log_print(ANDROID_LOG_ERROR, kTag, "Decoder init failed for track %d", i);
                 return false;
             }
             durationMs_ = std::max<int64_t>(durationMs_, thread->getDurationMs());
@@ -108,15 +101,21 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
 }
 
 bool OboeAudioEngine::appendTrack(int fd, float volume, bool muted, float leftGain, float rightGain) {
+    std::lock_guard<std::mutex> appendLock(appendMutex_);
+    lastFailure_.store(NativeAudioFailureSnapshot{}.encode(), std::memory_order_release);
     auto thread = std::make_unique<NativeDecoderThread>();
-    if (!thread->initialize(fd)) return false;
-    if (thread->getSampleRate() != sampleRate_) {
-        __android_log_print(
-            ANDROID_LOG_ERROR,
-            kTag,
-            "Appended track sample rate %d does not match mixer rate %d",
-            thread->getSampleRate(),
-            sampleRate_
+    if (!thread->initialize(fd)) {
+        int failedTrackIndex = -1;
+        {
+            std::lock_guard<std::mutex> lock(trackMutex_);
+            failedTrackIndex = trackCount_;
+        }
+        lastFailure_.store(
+            NativeAudioFailureSnapshot{
+                thread->getFailureKind(),
+                failedTrackIndex,
+            }.encode(),
+            std::memory_order_release
         );
         return false;
     }
@@ -135,6 +134,24 @@ bool OboeAudioEngine::appendTrack(int fd, float volume, bool muted, float leftGa
         thread->resume();
 
         const int index = trackCount_;
+        const auto resetStart = std::chrono::steady_clock::now();
+        while (
+            thread->isSeekPending() &&
+            std::chrono::steady_clock::now() - resetStart < std::chrono::milliseconds(250)
+        ) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        const NativeAudioDecoderFailure resetFailure = thread->isSeekPending()
+            ? NativeAudioDecoderFailure::DecoderFailure
+            : thread->getFailureKind();
+        if (resetFailure != NativeAudioDecoderFailure::None) {
+            lastFailure_.store(
+                NativeAudioFailureSnapshot{resetFailure, index}.encode(),
+                std::memory_order_release
+            );
+            return false;
+        }
+
         volumes_[index].store(std::clamp(volume, 0.0f, 1.0f), std::memory_order_release);
         leftGains_[index].store(std::clamp(leftGain, 0.0f, 2.0f), std::memory_order_release);
         rightGains_[index].store(std::clamp(rightGain, 0.0f, 2.0f), std::memory_order_release);
@@ -260,10 +277,10 @@ void OboeAudioEngine::stop() {
     pitchTempoProcessor_.reset();
 }
 
-void OboeAudioEngine::seekTo(int64_t ms) {
+bool OboeAudioEngine::seekTo(int64_t ms) {
     {
         std::lock_guard<std::mutex> lock(trackMutex_);
-        if (decoderThreads_.empty()) return;
+        if (decoderThreads_.empty()) return false;
     }
 
     const int64_t clampedMs = std::clamp(ms, static_cast<int64_t>(0), durationMs_);
@@ -343,11 +360,36 @@ void OboeAudioEngine::seekTo(int64_t ms) {
 
     const auto start = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(250)) {
-        const bool ready = std::all_of(decoderThreads_.begin(), decoderThreads_.end(), [](const auto& thread) {
-            return thread->available() >= NativeDecoderThread::kDecodeChunkSamples || thread->isEndOfStream();
-        });
+        const bool ready = std::all_of(
+            decoderThreads_.begin(),
+            decoderThreads_.end(),
+            [](const auto& thread) {
+                return !thread->isSeekPending() &&
+                    (thread->available() >= NativeDecoderThread::kDecodeChunkSamples ||
+                     thread->isEndOfStream());
+            }
+        );
         if (ready) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    for (int index = 0; index < trackCount_; ++index) {
+        const auto& thread = decoderThreads_[static_cast<size_t>(index)];
+        const NativeAudioDecoderFailure failure = thread->isSeekPending()
+            ? NativeAudioDecoderFailure::DecoderFailure
+            : thread->getFailureKind();
+        if (failure != NativeAudioDecoderFailure::None) {
+            lastFailure_.store(
+                NativeAudioFailureSnapshot{failure, index}.encode(),
+                std::memory_order_release
+            );
+            for (auto& decoderThread : decoderThreads_) {
+                decoderThread->pause();
+            }
+            isSeeking_.store(false, std::memory_order_release);
+            isPlaying_.store(false, std::memory_order_release);
+            return false;
+        }
     }
 
     const int64_t clampedFramePosition = (clampedMs * sampleRate_) / 1000;
@@ -371,6 +413,7 @@ void OboeAudioEngine::seekTo(int64_t ms) {
     // a double-start where play() would reset fadeScale_ to 0 after
     // the first start had already begun fading in, producing a pop.
     isPlaying_.store(false, std::memory_order_release);
+    return true;
 }
 
 void OboeAudioEngine::setVolume(int trackIdx, float volume) {
@@ -415,6 +458,31 @@ int64_t OboeAudioEngine::getDurationMs() const {
 
 int OboeAudioEngine::getSampleRate() const {
     return sampleRate_;
+}
+
+NativeAudioFailureSnapshot OboeAudioEngine::getLastFailure() {
+    const NativeAudioFailureSnapshot existing = NativeAudioFailureSnapshot::decode(
+        lastFailure_.load(std::memory_order_acquire)
+    );
+    if (existing.kind != NativeAudioDecoderFailure::None) {
+        return existing;
+    }
+
+    std::lock_guard<std::mutex> lock(trackMutex_);
+    for (int index = 0; index < trackCount_; ++index) {
+        const NativeAudioDecoderFailure failure =
+            decoderThreads_[static_cast<size_t>(index)]->getFailureKind();
+        if (failure != NativeAudioDecoderFailure::None) {
+            const NativeAudioFailureSnapshot snapshot{failure, index};
+            lastFailure_.store(snapshot.encode(), std::memory_order_release);
+            return snapshot;
+        }
+    }
+    return {};
+}
+
+void OboeAudioEngine::clearLastFailure() {
+    lastFailure_.store(NativeAudioFailureSnapshot{}.encode(), std::memory_order_release);
 }
 
 bool OboeAudioEngine::isPlaying() const {

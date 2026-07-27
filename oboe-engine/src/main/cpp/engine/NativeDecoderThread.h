@@ -27,8 +27,10 @@ public:
     int read(int16_t* dst, int count);
     size_t available() const;
     bool isEndOfStream() const;
+    bool isSeekPending() const;
     int getSampleRate() const;
     int getDurationMs() const;
+    NativeAudioDecoderFailure getFailureKind() const;
 
 private:
     void run();
@@ -39,5 +41,6 @@ private:
     std::atomic<bool> isRunning_{false};
     std::atomic<bool> isPaused_{true};
     std::atomic<int64_t> pendingSeekUs_{-1};
+    std::atomic<bool> isSeekPending_{false};
     std::atomic<bool> isEndOfStream_{false};
 };

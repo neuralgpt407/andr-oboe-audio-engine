@@ -52,14 +52,16 @@ public:
     );
 
     // Upper bound on the output frames produced from `inputFrames` input
-    // frames, for buffer sizing. Includes a small guard for phase remainder.
+    // frames, for buffer sizing. Includes a small guard for phase remainder;
+    // returns -1 when the bound cannot be represented safely.
     int32_t maxOutputFramesFor(int32_t inputFrames) const;
 
     // True when input and output rates match; process() is then a plain copy.
     bool isPassthrough() const;
 
-    // Discard any buffered filter state, e.g. between takes.
-    void reset();
+    // Discard any buffered filter state, e.g. between takes. Returns false if
+    // the stateful converter could not be rebuilt.
+    bool reset();
 
     int inputSampleRate() const;
     int outputSampleRate() const;

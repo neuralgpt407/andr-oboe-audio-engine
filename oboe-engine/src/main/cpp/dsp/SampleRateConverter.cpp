@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 
 #include "MultiChannelResampler.h"
 
@@ -140,6 +141,9 @@ int32_t SampleRateConverter::maxOutputFramesFor(int32_t inputFrames) const {
     const int64_t numerator =
         static_cast<int64_t>(inputFrames) * static_cast<int64_t>(impl_->outputRate);
     const int64_t frames = (numerator + impl_->inputRate - 1) / impl_->inputRate;
+    if (frames > std::numeric_limits<int32_t>::max() - 2) {
+        return -1;
+    }
     return static_cast<int32_t>(frames) + 2;
 }
 
@@ -147,17 +151,22 @@ bool SampleRateConverter::isPassthrough() const {
     return impl_->resampler == nullptr;
 }
 
-void SampleRateConverter::reset() {
+bool SampleRateConverter::reset() {
     if (impl_->resampler == nullptr) {
-        return;
+        return true;
     }
     // MultiChannelResampler has no public reset; rebuild to clear filter state.
-    impl_->resampler.reset(VendoredResampler::make(
+    std::unique_ptr<VendoredResampler> replacement(VendoredResampler::make(
         impl_->channelCount,
         impl_->inputRate,
         impl_->outputRate,
         toVendoredQuality(impl_->quality)
     ));
+    if (replacement == nullptr) {
+        return false;
+    }
+    impl_->resampler = std::move(replacement);
+    return true;
 }
 
 int SampleRateConverter::inputSampleRate() const {

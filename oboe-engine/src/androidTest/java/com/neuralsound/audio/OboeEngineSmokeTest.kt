@@ -19,52 +19,53 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class OboeEngineSmokeTest {
     @Test
-    fun rejectsMismatchedTrackRatesWithTypedFailure() = runBlocking {
+    fun preparesMixedRateAndMultichannelTracksOnOneTimeline() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val canonical = createSilentWav(
-            file = File(context.cacheDir, "oboe-format-44100.wav"),
-            sampleRate = 44_100,
-        )
-        val mismatched = createSilentWav(
+        val original = createSilentWav(
             file = File(context.cacheDir, "oboe-format-48000.wav"),
             sampleRate = 48_000,
+            channelCount = 4,
+        )
+        val denoised = createSilentWav(
+            file = File(context.cacheDir, "oboe-format-44100.wav"),
+            sampleRate = 44_100,
+            channelCount = 1,
         )
         val mixer = AudioEngine(context).createMixerSession()
-        val mismatchedId = TrackId("mismatched")
 
         try {
-            val result = mixer.prepare(
-                MixerRequest(
-                    tracks = listOf(
-                        MixerTrack(TrackId("canonical"), Uri.fromFile(canonical)),
-                        MixerTrack(mismatchedId, Uri.fromFile(mismatched)),
+            assertEquals(
+                AudioResult.Success,
+                mixer.prepare(
+                    MixerRequest(
+                        tracks = listOf(
+                            MixerTrack(TrackId("original"), Uri.fromFile(original)),
+                            MixerTrack(TrackId("denoised"), Uri.fromFile(denoised)),
+                        )
                     )
                 )
             )
-
-            val failure = (result as AudioResult.Failure).failure
-            assertEquals(
-                AudioFailure.UnsupportedTrackFormat(
-                    trackId = mismatchedId,
-                    sampleRate = 48_000,
-                    channelCount = 2,
-                    requiredSampleRate = 44_100,
-                ),
-                failure,
-            )
-            assertEquals(MixerStatus.FAILED, mixer.state.value.status)
+            assertEquals(MixerStatus.READY, mixer.state.value.status)
+            assertEquals(1_000L, mixer.state.value.durationMs)
         } finally {
             mixer.close()
-            canonical.delete()
-            mismatched.delete()
+            original.delete()
+            denoised.delete()
         }
     }
 
     @Test
     fun prepareAppendSwitchSeekAndEffects() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val original = createSilentWav(File(context.cacheDir, "oboe-smoke-original.wav"))
-        val denoised = createSilentWav(File(context.cacheDir, "oboe-smoke-denoised.wav"))
+        val original = createSilentWav(
+            file = File(context.cacheDir, "oboe-smoke-original.wav"),
+            sampleRate = 48_000,
+        )
+        val denoised = createSilentWav(
+            file = File(context.cacheDir, "oboe-smoke-denoised.wav"),
+            sampleRate = 44_100,
+            channelCount = 1,
+        )
         val mixer = AudioEngine(context).createMixerSession()
         val originalId = TrackId("original")
         val vocalId = TrackId("vocal")
@@ -81,12 +82,12 @@ class OboeEngineSmokeTest {
                                 mix = TrackMix(volume = 1f),
                             )
                         ),
-                        looping = true,
+                        looping = false,
                         effects = PlaybackEffects(tempo = 1.1f, pitchSemitones = 2),
                     )
                 ),
             )
-            assertTrue(mixer.state.value.looping)
+            assertFalse(mixer.state.value.looping)
             assertEquals(
                 PlaybackEffects(tempo = 1.1f, pitchSemitones = 2),
                 mixer.state.value.effects,
@@ -113,14 +114,20 @@ class OboeEngineSmokeTest {
 
             assertEquals(AudioResult.Success, mixer.play())
             delay(100L)
-            assertEquals(AudioResult.Success, mixer.seekTo(500L))
-            withTimeout(2_000L) {
-                while (mixer.state.value.positionMs < 400L) delay(20L)
-            }
-
             val effects = PlaybackEffects(tempo = 0.9f, pitchSemitones = -2)
             assertEquals(AudioResult.Success, mixer.setEffects(effects))
             assertEquals(effects, mixer.state.value.effects)
+            assertEquals(AudioResult.Success, mixer.seekTo(900L))
+            withTimeout(3_000L) {
+                while (
+                    mixer.state.value.positionMs < 1_000L ||
+                    mixer.state.value.status != MixerStatus.PAUSED
+                ) {
+                    delay(20L)
+                }
+            }
+            assertEquals(1_000L, mixer.state.value.positionMs)
+            assertEquals(MixerStatus.PAUSED, mixer.state.value.status)
         } finally {
             mixer.close()
             original.delete()
@@ -131,8 +138,8 @@ class OboeEngineSmokeTest {
     private fun createSilentWav(
         file: File,
         sampleRate: Int = 44_100,
+        channelCount: Int = 2,
     ): File {
-        val channelCount = 2
         val bitsPerSample = 16
         val frameCount = sampleRate
         val dataSize = frameCount * channelCount * (bitsPerSample / 8)

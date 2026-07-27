@@ -79,7 +79,12 @@ jboolean nativeIsPlaying(JNIEnv*, jobject, jlong handle) {
     }
     return JNI_FALSE;
 }
-void nativeSeekTo(JNIEnv*, jobject, jlong handle, jlong ms) { if (auto* engine = fromHandle(handle)) engine->seekTo(ms); }
+jboolean nativeSeekTo(JNIEnv*, jobject, jlong handle, jlong ms) {
+    if (auto* engine = fromHandle(handle)) {
+        return engine->seekTo(ms) ? JNI_TRUE : JNI_FALSE;
+    }
+    return JNI_FALSE;
+}
 void nativeOnDeviceChanged(JNIEnv*, jobject, jlong handle) { if (auto* engine = fromHandle(handle)) engine->handleDeviceChange(); }
 void nativeSetVolume(JNIEnv*, jobject, jlong handle, jint index, jfloat volume) { if (auto* engine = fromHandle(handle)) engine->setVolume(index, volume); }
 void nativeSetMute(JNIEnv*, jobject, jlong handle, jint index, jboolean muted) { if (auto* engine = fromHandle(handle)) engine->setMute(index, muted == JNI_TRUE); }
@@ -91,6 +96,22 @@ void nativeSetPitchSemitones(JNIEnv*, jobject, jlong handle, jint semitones) { i
 jlong nativeGetPositionMs(JNIEnv*, jobject, jlong handle) { if (auto* engine = fromHandle(handle)) return engine->getPositionMs(); return 0; }
 jlong nativeGetDurationMs(JNIEnv*, jobject, jlong handle) { if (auto* engine = fromHandle(handle)) return engine->getDurationMs(); return 0; }
 jint nativeGetOutputDeviceId(JNIEnv*, jobject, jlong handle) { if (auto* engine = fromHandle(handle)) return engine->getOutputDeviceId(); return 0; }
+jlong nativeGetLastFailure(JNIEnv*, jobject, jlong handle) {
+    if (auto* engine = fromHandle(handle)) {
+        return static_cast<jlong>(engine->getLastFailure().encode());
+    }
+    return static_cast<jlong>(
+        NativeAudioFailureSnapshot{
+            NativeAudioDecoderFailure::DecoderFailure,
+            -1,
+        }.encode()
+    );
+}
+void nativeClearLastFailure(JNIEnv*, jobject, jlong handle) {
+    if (auto* engine = fromHandle(handle)) {
+        engine->clearLastFailure();
+    }
+}
 
 void nativeRelease(JNIEnv*, jobject, jlong handle) {
     auto* engine = fromHandle(handle);
@@ -270,7 +291,7 @@ JNINativeMethod kMethods[] = {
     {"nativePlay", "(J)Z", reinterpret_cast<void*>(nativePlay)},
     {"nativeIsPlaying", "(J)Z", reinterpret_cast<void*>(nativeIsPlaying)},
     {"nativePause", "(J)V", reinterpret_cast<void*>(nativePause)},
-    {"nativeSeekTo", "(JJ)V", reinterpret_cast<void*>(nativeSeekTo)},
+    {"nativeSeekTo", "(JJ)Z", reinterpret_cast<void*>(nativeSeekTo)},
     {"nativeOnDeviceChanged", "(J)V", reinterpret_cast<void*>(nativeOnDeviceChanged)},
     {"nativeSetVolume", "(JIF)V", reinterpret_cast<void*>(nativeSetVolume)},
     {"nativeSetMute", "(JIZ)V", reinterpret_cast<void*>(nativeSetMute)},
@@ -281,6 +302,8 @@ JNINativeMethod kMethods[] = {
     {"nativeGetPositionMs", "(J)J", reinterpret_cast<void*>(nativeGetPositionMs)},
     {"nativeGetDurationMs", "(J)J", reinterpret_cast<void*>(nativeGetDurationMs)},
     {"nativeGetOutputDeviceId", "(J)I", reinterpret_cast<void*>(nativeGetOutputDeviceId)},
+    {"nativeGetLastFailure", "(J)J", reinterpret_cast<void*>(nativeGetLastFailure)},
+    {"nativeClearLastFailure", "(J)V", reinterpret_cast<void*>(nativeClearLastFailure)},
     {"nativeRelease", "(J)V", reinterpret_cast<void*>(nativeRelease)},
 };
 

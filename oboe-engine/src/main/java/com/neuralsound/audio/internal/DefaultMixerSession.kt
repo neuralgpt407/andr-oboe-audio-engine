@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 internal class DefaultMixerSession(
-    private val controller: NativeMixerController,
+    private val controller: MixerController,
 ) : MixerSession {
     private val closed = AtomicBoolean(false)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -34,12 +34,18 @@ internal class DefaultMixerSession(
     init {
         scope.launch {
             controller.currentPosition.collect { positionMs ->
-                _state.update { it.copy(positionMs = positionMs) }
+                _state.update { current ->
+                    if (current.status in TERMINAL_STATUSES) current
+                    else current.copy(positionMs = positionMs)
+                }
             }
         }
         scope.launch {
             controller.totalDuration.collect { durationMs ->
-                _state.update { it.copy(durationMs = durationMs) }
+                _state.update { current ->
+                    if (current.status in TERMINAL_STATUSES) current
+                    else current.copy(durationMs = durationMs)
+                }
             }
         }
         scope.launch {
@@ -55,17 +61,33 @@ internal class DefaultMixerSession(
         }
         scope.launch {
             controller.tempoSpeed.collect { tempo ->
-                _state.update { it.copy(effects = it.effects.copy(tempo = tempo)) }
+                _state.update { current ->
+                    if (current.status in TERMINAL_STATUSES) current
+                    else current.copy(effects = current.effects.copy(tempo = tempo))
+                }
             }
         }
         scope.launch {
             controller.pitchSemitones.collect { pitch ->
-                _state.update { it.copy(effects = it.effects.copy(pitchSemitones = pitch)) }
+                _state.update { current ->
+                    if (current.status in TERMINAL_STATUSES) current
+                    else current.copy(effects = current.effects.copy(pitchSemitones = pitch))
+                }
             }
         }
         scope.launch {
             controller.routeRevision.collect {
-                _state.update { current -> current.copy(route = currentRoute()) }
+                _state.update { current ->
+                    if (current.status in TERMINAL_STATUSES) current
+                    else current.copy(route = currentRoute())
+                }
+            }
+        }
+        scope.launch {
+            controller.runtimeFailure.collect { failure ->
+                if (failure != null && _state.value.status !in TERMINAL_STATUSES) {
+                    fail(failure)
+                }
             }
         }
     }
@@ -241,6 +263,12 @@ internal class DefaultMixerSession(
 
     private fun readyFailure(): AudioResult.Failure? {
         releasedFailure()?.let { return it }
+        val current = _state.value
+        if (current.status == MixerStatus.FAILED) {
+            return AudioResult.Failure(
+                current.failure ?: AudioFailure.NativeOperationFailed("mixer")
+            )
+        }
         return if (controller.isPrepared()) null else AudioResult.Failure(AudioFailure.NotPrepared)
     }
 
@@ -249,7 +277,17 @@ internal class DefaultMixerSession(
     }
 
     private fun fail(failure: AudioFailure): AudioResult.Failure {
-        _state.update { it.copy(status = MixerStatus.FAILED, failure = failure) }
+        _state.update {
+            it.copy(
+                status = MixerStatus.FAILED,
+                positionMs = 0L,
+                durationMs = 0L,
+                playbackRange = null,
+                tracks = emptyMap(),
+                route = null,
+                failure = failure,
+            )
+        }
         return AudioResult.Failure(failure)
     }
 

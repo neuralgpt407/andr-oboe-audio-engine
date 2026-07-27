@@ -40,7 +40,7 @@ public:
     void pause();
     void stop();
     void handleDeviceChange();
-    void seekTo(int64_t ms);
+    bool seekTo(int64_t ms);
     void setVolume(int trackIdx, float volume);
     void setMute(int trackIdx, bool muted);
     void setChannelGain(int trackIdx, float leftGain, float rightGain);
@@ -52,6 +52,8 @@ public:
     int getSampleRate() const;
     int getOutputDeviceId() const;
     bool isPlaying() const;
+    NativeAudioFailureSnapshot getLastFailure();
+    void clearLastFailure();
 
     oboe::DataCallbackResult onAudioReady(
         oboe::AudioStream* audioStream,
@@ -99,6 +101,7 @@ private:
     std::mutex reopenMutex_;
     std::mutex renderThreadMutex_;
     std::mutex trackMutex_;
+    std::mutex appendMutex_;
     std::mutex joinRescueMutex_;
     std::mutex restartThreadMutex_;
     std::thread renderThread_;
@@ -129,8 +132,11 @@ private:
     // ErrorDisconnected to a started stream, so the next play() must reopen.
     std::atomic<bool> streamNeedsReopen_{false};
     std::atomic<bool> shuttingDown_{false};
+    std::atomic<int64_t> lastFailure_{
+        NativeAudioFailureSnapshot{}.encode()
+    };
     int64_t durationMs_ = 0;
-    int sampleRate_ = 44100;
+    int sampleRate_ = neuralsound::audio::DecodedAudioNormalizer::kOutputSampleRate;
     int trackCount_ = 0;
     // Source frame where the track's decoder delivers its next sample.
     std::array<std::atomic<int64_t>, kMaxTracks> trackHeadFrames_{};
