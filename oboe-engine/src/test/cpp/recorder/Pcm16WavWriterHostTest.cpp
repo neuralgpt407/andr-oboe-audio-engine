@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -216,6 +217,39 @@ void testExactFrameReplacementPreservesSuffix(const std::filesystem::path& path)
     );
 }
 
+void testFrameOffsetBeyondWavCapacityIsRejectedWithoutMutation(
+    const std::filesystem::path& path
+) {
+    require(
+        Pcm16WavWriter::kMaxFrameCount * 2 + 36 <=
+            std::numeric_limits<uint32_t>::max(),
+        "maximum frame count fits the complete RIFF size"
+    );
+    require(
+        (Pcm16WavWriter::kMaxFrameCount + 1) * 2 + 36 >
+            std::numeric_limits<uint32_t>::max(),
+        "the next frame would overflow the complete RIFF size"
+    );
+    require(
+        Pcm16WavWriter::createFullDurationDraft(path.string(), 44'100, 8),
+        "create capacity source"
+    );
+    writeSamples(path, {100, 200, 300, 400, 500, 600, 700, 800});
+    const auto before = readAll(path);
+
+    Pcm16WavWriter writer;
+    require(
+        !writer.openAtFrame(
+            path.string(),
+            44'100,
+            1,
+            Pcm16WavWriter::kMaxFrameCount + 1
+        ),
+        "frame offset beyond RIFF/WAV capacity is rejected"
+    );
+    require(readAll(path) == before, "rejected oversized offset never mutates the WAV");
+}
+
 void testTenFramePreciseContinuationCycles(const std::filesystem::path& path) {
     constexpr int kSampleRate = 44'100;
     constexpr int kFramesPerCycle = 1'411;
@@ -304,6 +338,14 @@ void testTenFramePreciseContinuationCycles(const std::filesystem::path& path) {
         ),
         "ten cycles retain every untouched suffix byte"
     );
+    int16_t previousCycleSample = 0;
+    for (int cycle = 0; cycle < kCycleCount; ++cycle) {
+        const size_t probeFrame =
+            static_cast<size_t>(cycle * kFramesPerCycle + 300);
+        const int16_t cycleSample = readLe16(after, 44 + probeFrame * 2);
+        require(cycleSample > previousCycleSample, "each continuation occupies its exact frame range");
+        previousCycleSample = cycleSample;
+    }
 }
 
 void testBoostAndCeiling(const std::filesystem::path& path) {
@@ -337,6 +379,7 @@ int main() {
     testContainedReplacement(tempDir / "contained.wav");
     testExtendedReplacement(tempDir / "extended.wav");
     testExactFrameReplacementPreservesSuffix(tempDir / "exact-frame.wav");
+    testFrameOffsetBeyondWavCapacityIsRejectedWithoutMutation(tempDir / "capacity.wav");
     testTenFramePreciseContinuationCycles(tempDir / "ten-cycles.wav");
     testBoostAndCeiling(tempDir / "gain.wav");
 

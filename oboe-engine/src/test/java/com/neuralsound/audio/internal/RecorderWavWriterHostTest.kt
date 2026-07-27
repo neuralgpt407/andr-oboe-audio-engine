@@ -64,6 +64,59 @@ class RecorderWavWriterHostTest {
     }
 
     @Test
+    fun recorderCanonicalRatePolicyHostContractPasses() {
+        val moduleDir = (File("oboe-engine").takeIf { it.exists() } ?: File(".")).canonicalFile
+        val outputDir = File(moduleDir, "build/recorderHostTest").also { it.mkdirs() }
+        val binary = File(outputDir, "RecorderCanonicalRatePolicyHostTest")
+        val testSource = File(moduleDir, "src/test/cpp/recorder/RecorderCanonicalRatePolicyHostTest.cpp")
+        val policySource = File(moduleDir, "src/main/cpp/recorder/RecorderCanonicalRatePolicy.cpp")
+
+        val compile = runProcess(
+            listOf(
+                "c++",
+                "-std=c++17",
+                testSource.absolutePath,
+                policySource.absolutePath,
+                "-o",
+                binary.absolutePath,
+            ),
+            moduleDir,
+        )
+        assertEquals(compile.output, 0, compile.exitCode)
+
+        val run = runProcess(listOf(binary.absolutePath), moduleDir)
+        assertEquals(run.output, 0, run.exitCode)
+        assertTrue(run.output, run.output.contains("PASS: Recorder canonical-rate"))
+    }
+
+    @Test
+    fun recorderFailureStateHostContractPasses() {
+        val moduleDir = (File("oboe-engine").takeIf { it.exists() } ?: File(".")).canonicalFile
+        val outputDir = File(moduleDir, "build/recorderHostTest").also { it.mkdirs() }
+        val binary = File(outputDir, "RecorderFailureStateHostTest")
+        val testSource = File(moduleDir, "src/test/cpp/recorder/RecorderFailureStateHostTest.cpp")
+        val stateSource = File(moduleDir, "src/main/cpp/recorder/RecorderFailureState.cpp")
+
+        val compile = runProcess(
+            listOf(
+                "c++",
+                "-std=c++17",
+                "-pthread",
+                testSource.absolutePath,
+                stateSource.absolutePath,
+                "-o",
+                binary.absolutePath,
+            ),
+            moduleDir,
+        )
+        assertEquals(compile.output, 0, compile.exitCode)
+
+        val run = runProcess(listOf(binary.absolutePath), moduleDir)
+        assertEquals(run.output, 0, run.exitCode)
+        assertTrue(run.output, run.output.contains("PASS: RecorderFailureState"))
+    }
+
+    @Test
     fun recorderRingIntegrityHostContractPasses() {
         val moduleDir = (File("oboe-engine").takeIf { it.exists() } ?: File(".")).canonicalFile
         val outputDir = File(moduleDir, "build/recorderHostTest").also { it.mkdirs() }

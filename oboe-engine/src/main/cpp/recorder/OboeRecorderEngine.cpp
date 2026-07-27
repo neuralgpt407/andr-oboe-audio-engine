@@ -1,4 +1,5 @@
 #include "OboeRecorderEngine.h"
+#include "RecorderCanonicalRatePolicy.h"
 #include "RecorderSampleConverter.h"
 #include "RecorderStreamConfig.h"
 
@@ -25,12 +26,7 @@ bool OboeRecorderEngine::startMicSessionLocked() {
         return true;
     }
 
-    failed_.store(false, std::memory_order_release);
-    lastErrorCode_.store(OboeRecorderErrorCode::None, std::memory_order_release);
-    {
-        std::lock_guard<std::mutex> lock(errorMutex_);
-        lastError_.clear();
-    }
+    failureState_.reset();
     peak_.store(0.0f, std::memory_order_release);
     ringBuffer_.clear();
 
@@ -107,16 +103,11 @@ int OboeRecorderEngine::getSampleRate() const {
 }
 
 bool OboeRecorderEngine::hasFailed() const {
-    return failed_.load(std::memory_order_acquire);
+    return failureState_.hasFailed();
 }
 
-OboeRecorderErrorCode OboeRecorderEngine::getLastErrorCode() const {
-    return lastErrorCode_.load(std::memory_order_acquire);
-}
-
-std::string OboeRecorderEngine::getLastError() const {
-    std::lock_guard<std::mutex> lock(errorMutex_);
-    return lastError_;
+OboeRecorderFailureSnapshot OboeRecorderEngine::getFailureSnapshot() const {
+    return failureState_.snapshot();
 }
 
 oboe::DataCallbackResult OboeRecorderEngine::onAudioReady(
@@ -184,22 +175,18 @@ oboe::DataCallbackResult OboeRecorderEngine::onAudioReady(
         if (writeFrames > 0) {
             const uint64_t armedEpoch = callbackFence_.epoch();
             if (armedEpoch != 0 && callbackFence_.tryEnter(armedEpoch)) {
-                if (!failed_.load(std::memory_order_acquire)) {
+                if (!failureState_.hasFailed()) {
                     const size_t frameCount = static_cast<size_t>(writeFrames);
                     if (ringBuffer_.writeAllOrNothing(writeBuffer, frameCount)) {
                         acceptedFrames_.fetch_add(writeFrames, std::memory_order_release);
                         waveformAccumulator_.appendPcm16Mono(writeBuffer, writeFrames);
                     } else {
-                        lastErrorCode_.store(
-                            OboeRecorderErrorCode::WriterOverflow,
-                            std::memory_order_release
-                        );
-                        failed_.store(true, std::memory_order_release);
+                        failureState_.publishRealtimeOverflow();
                         callbackFence_.disarm();
                     }
                 }
                 callbackFence_.leave();
-                if (failed_.load(std::memory_order_acquire)) {
+                if (failureState_.hasFailed()) {
                     break;
                 }
             }
@@ -247,7 +234,9 @@ bool OboeRecorderEngine::configureResampler(int deviceSampleRate) {
     resampleOutputScratch_.clear();
     resampledPcm16Scratch_.clear();
 
-    if (deviceSampleRate <= 0) {
+    const RecorderCanonicalRateAction initialAction =
+        recorderCanonicalRateAction(deviceSampleRate, true);
+    if (initialAction == RecorderCanonicalRateAction::Reject) {
         __android_log_print(
             ANDROID_LOG_ERROR,
             kTag,
@@ -258,7 +247,7 @@ bool OboeRecorderEngine::configureResampler(int deviceSampleRate) {
         return false;
     }
 
-    if (deviceSampleRate == kOutputSampleRate) {
+    if (initialAction == RecorderCanonicalRateAction::Direct) {
         // Device already runs at the canonical rate: record directly.
         resampler_.reset();
         return true;
@@ -270,7 +259,10 @@ bool OboeRecorderEngine::configureResampler(int deviceSampleRate) {
         kOutputSampleRate,
         neuralsound::audio::ResampleQuality::Medium
     );
-    if (resampler_ == nullptr) {
+    if (
+        recorderCanonicalRateAction(deviceSampleRate, resampler_ != nullptr) !=
+        RecorderCanonicalRateAction::Convert
+    ) {
         // The public recorder contract is canonical 44.1 kHz output. Never
         // produce a file at another rate when conversion cannot be configured.
         __android_log_print(
@@ -314,8 +306,5 @@ void OboeRecorderEngine::failActiveTake(
     OboeRecorderErrorCode errorCode
 ) {
     callbackFence_.disarm();
-    lastErrorCode_.store(errorCode, std::memory_order_release);
-    failed_.store(true, std::memory_order_release);
-    std::lock_guard<std::mutex> lock(errorMutex_);
-    lastError_ = message;
+    failureState_.publish(errorCode, message);
 }

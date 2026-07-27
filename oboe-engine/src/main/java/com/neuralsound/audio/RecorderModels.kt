@@ -47,6 +47,17 @@ data class RecorderFailure(
     val message: String? = null,
 )
 
+data class RecorderState(
+    val status: RecorderStatus,
+    val currentFailure: RecorderFailure? = null,
+) {
+    init {
+        require(status != RecorderStatus.FAILED || currentFailure != null) {
+            "A failed recorder state must include its typed failure"
+        }
+    }
+}
+
 data class RecorderOperationResult(
     val error: RecorderError? = null,
     val message: String? = null,

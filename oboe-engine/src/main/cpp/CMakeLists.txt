@@ -18,6 +18,8 @@ add_library(neuralsound_audio_engine SHARED
     recorder/OboeRecorderEngineWriter.cpp
     recorder/Pcm16WavHeader.cpp
     recorder/Pcm16WavWriter.cpp
+    recorder/RecorderCanonicalRatePolicy.cpp
+    recorder/RecorderFailureState.cpp
     recorder/RecorderWaveformAccumulator.cpp
     recorder/RecorderSampleConverter.cpp
     recorder/RecorderStreamConfig.cpp

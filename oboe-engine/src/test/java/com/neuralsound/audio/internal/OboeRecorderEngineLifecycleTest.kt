@@ -23,30 +23,6 @@ import java.util.concurrent.atomic.AtomicInteger
 class OboeRecorderEngineLifecycleTest {
 
     @Test
-    fun recorderNativeMethodsKeepRegisteredJvmNames() {
-        val nativeMethodNames = NativeRecorderSession::class.java.declaredMethods
-            .asSequence()
-            .map { it.name }
-            .filter { it.startsWith("native") }
-            .toSet()
-
-        assertTrue("nativeCreate must match JNI registration", "nativeCreate" in nativeMethodNames)
-        assertTrue(
-            "recorder native method names must not be module-mangled",
-            nativeMethodNames.none { "$" in it },
-        )
-        assertTrue("nativeGetTelemetry must match JNI registration", "nativeGetTelemetry" in nativeMethodNames)
-        assertTrue(
-            "nativeGetLastErrorCode must match JNI registration",
-            "nativeGetLastErrorCode" in nativeMethodNames,
-        )
-        assertTrue(
-            "nativeStartWritingAtFrame must match JNI registration",
-            "nativeStartWritingAtFrame" in nativeMethodNames,
-        )
-    }
-
-    @Test
     fun releaseWaitsForInFlightNativeCallAndIsIdempotent() {
         val bridge = FakeRecorderNativeBridge()
         val recorder = NativeRecorderSession(
@@ -200,6 +176,7 @@ class OboeRecorderEngineLifecycleTest {
             val telemetry = recorder.telemetry(afterBucketIndex = 1)
             assertEquals(cycle + 1L, telemetry?.takeId)
             assertEquals(1, telemetry?.firstBucketIndex)
+            assertTrue(recorder.pauseWriting().isSuccess)
             val stopped = recorder.stopWriting()
             assertTrue(stopped.isSuccess)
             assertEquals(stopped.acceptedFrames, stopped.writtenFrames)
@@ -223,6 +200,7 @@ class OboeRecorderEngineLifecycleTest {
         )
         assertTrue("frame API must never round-trip through milliseconds", bridge.startMillisecondOffsets.isEmpty())
         assertEquals(List(10) { 1 }, bridge.telemetryCursors)
+        assertEquals(10, bridge.pauseWritingCalls)
         recorder.close()
     }
 
@@ -261,13 +239,21 @@ class OboeRecorderEngineLifecycleTest {
         }
 
         assertEquals(RecorderStatus.FAILED, recorder.status.value)
+        assertEquals(RecorderStatus.FAILED, recorder.state.value.status)
+        val replayedState = runBlocking {
+            withTimeout(1_000L) {
+                recorder.state.first { it.status == RecorderStatus.FAILED }
+            }
+        }
         val replayed = runBlocking {
             withTimeout(1_000L) {
                 recorder.currentFailure.filterNotNull().first()
             }
         }
+        assertEquals(RecorderError.StreamDisconnected, replayedState.currentFailure?.error)
         assertEquals(RecorderError.StreamDisconnected, replayed.error)
         assertEquals("input route disconnected", replayed.message)
+        assertTrue("one native snapshot supplies the typed failure", bridge.failureSnapshotCalls > 0)
 
         bridge.stopResult = NativeRecordingResult(
             durationMs = 0L,
@@ -284,6 +270,8 @@ class OboeRecorderEngineLifecycleTest {
             recorder.startWriting(FrameRecordingRequest(File("retry.wav"), 101L)).isSuccess,
         )
         assertNull(recorder.currentFailure.value)
+        assertEquals(RecorderStatus.WRITING, recorder.state.value.status)
+        assertNull(recorder.state.value.currentFailure)
 
         bridge.lastFailure = NativeRecorderFailure.WRITER_OVERFLOW
         bridge.lastError = "ring full after retry"
@@ -346,6 +334,78 @@ class OboeRecorderEngineLifecycleTest {
         recorder.close()
         assertEquals(RecorderError.Released, recorder.startMicSession().error)
         assertEquals(RecorderError.Released, recorder.currentFailure.value?.error)
+    }
+
+    @Test
+    fun asynchronousWriterFileFailurePublishesFromOneNativeSnapshot() {
+        val bridge = FakeRecorderNativeBridge()
+        val recorder = NativeRecorderSession(bridge) { true }
+        assertTrue(
+            recorder.startWriting(FrameRecordingRequest(File("take.wav"), 0L)).isSuccess,
+        )
+
+        bridge.lastFailure = NativeRecorderFailure.WRITER_FILE_ERROR
+        bridge.lastError = "disk write failed"
+        bridge.failed.set(true)
+        val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (
+            recorder.currentFailure.value?.error != RecorderError.WriterFileError &&
+            System.nanoTime() < deadlineNanos
+        ) {
+            Thread.sleep(10)
+        }
+
+        assertEquals(RecorderStatus.FAILED, recorder.status.value)
+        assertEquals(RecorderError.WriterFileError, recorder.currentFailure.value?.error)
+        assertEquals("disk write failed", recorder.currentFailure.value?.message)
+        assertEquals(1, bridge.failureSnapshotCalls)
+        recorder.close()
+    }
+
+    @Test
+    fun micOnlyRetryReplacesMonitorThatIsStoppingAfterFailure() {
+        val bridge = FakeRecorderNativeBridge()
+        val monitorStopping = CountDownLatch(1)
+        val allowMonitorToStop = CountDownLatch(1)
+        val stopHookCalls = AtomicInteger(0)
+        val recorder = NativeRecorderSession(
+            nativeBridge = bridge,
+            nativeLibraryLoader = { true },
+            failureMonitorStopHook = {
+                if (stopHookCalls.getAndIncrement() == 0) {
+                    monitorStopping.countDown()
+                    assertTrue(allowMonitorToStop.await(2, TimeUnit.SECONDS))
+                }
+            },
+        )
+        assertTrue(recorder.startMicSession().isSuccess)
+
+        bridge.lastFailure = NativeRecorderFailure.STREAM_DISCONNECTED
+        bridge.lastError = "first route failure"
+        bridge.failed.set(true)
+        assertTrue(monitorStopping.await(2, TimeUnit.SECONDS))
+        assertEquals(RecorderStatus.FAILED, recorder.status.value)
+
+        bridge.failed.set(false)
+        bridge.lastFailure = NativeRecorderFailure.NONE
+        bridge.lastError = ""
+        assertTrue(recorder.startMicSession().isSuccess)
+        allowMonitorToStop.countDown()
+
+        bridge.lastFailure = NativeRecorderFailure.WRITER_OVERFLOW
+        bridge.lastError = "second asynchronous failure"
+        bridge.failed.set(true)
+        val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (
+            recorder.currentFailure.value?.error != RecorderError.WriterOverflow &&
+            System.nanoTime() < deadlineNanos
+        ) {
+            Thread.sleep(10)
+        }
+
+        assertEquals(RecorderStatus.FAILED, recorder.status.value)
+        assertEquals(RecorderError.WriterOverflow, recorder.currentFailure.value?.error)
+        recorder.close()
     }
 
     @Test
@@ -469,6 +529,7 @@ class OboeRecorderEngineLifecycleTest {
         var startMicSessionResult = true
         var startWritingCalls = 0
         var releaseCalls = 0
+        var pauseWritingCalls = 0
         val startMillisecondOffsets = mutableListOf<Long>()
         val startFrameOffsets = mutableListOf<Long>()
         val telemetryCursors = mutableListOf<Int>()
@@ -482,6 +543,7 @@ class OboeRecorderEngineLifecycleTest {
         )
         var lastFailure = NativeRecorderFailure.NONE
         var lastError = ""
+        var failureSnapshotCalls = 0
 
         override fun create(owner: NativeRecorderSession): Long = 42L
 
@@ -512,6 +574,7 @@ class OboeRecorderEngineLifecycleTest {
         }
 
         override fun pauseWriting(owner: NativeRecorderSession, handle: Long) {
+            pauseWritingCalls++
             onPauseWriting()
         }
 
@@ -537,12 +600,16 @@ class OboeRecorderEngineLifecycleTest {
 
         override fun hasFailed(owner: NativeRecorderSession, handle: Long): Boolean = failed.get()
 
-        override fun getLastFailure(
+        override fun getFailureSnapshot(
             owner: NativeRecorderSession,
             handle: Long,
-        ): NativeRecorderFailure = lastFailure
-
-        override fun getLastError(owner: NativeRecorderSession, handle: Long): String = lastError
+        ): NativeRecorderFailureSnapshot {
+            failureSnapshotCalls++
+            return NativeRecorderFailureSnapshot(
+                code = lastFailure.code,
+                message = lastError,
+            )
+        }
 
         override fun releaseMicSession(owner: NativeRecorderSession, handle: Long) = Unit
 

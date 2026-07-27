@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,9 @@ struct Pcm16WavInfo {
 
 class Pcm16WavWriter {
 public:
+    static constexpr int64_t kMaxFrameCount =
+        (std::numeric_limits<uint32_t>::max() - 36) / 2;
+
     Pcm16WavWriter() = default;
     ~Pcm16WavWriter();
 
@@ -41,6 +45,7 @@ private:
     bool writeHeader(uint32_t dataBytes);
     bool updateHeader();
     bool ensureDataSize(int64_t targetBytes);
+    int64_t maxWritableDataBytes() const;
     bool readOriginalSample(int64_t dataByteOffset, int16_t* sample);
     bool writeSample(int16_t sample);
     bool flushPendingSamples();

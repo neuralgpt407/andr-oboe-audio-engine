@@ -158,12 +158,15 @@ jboolean nativeRecorderStartMicSession(JNIEnv*, jobject, jlong handle) {
     return JNI_FALSE;
 }
 
+using RecorderStartMethod =
+    bool (OboeRecorderEngine::*)(const std::string&, int64_t);
+
 jboolean nativeRecorderStartWritingWithOffset(
     JNIEnv* env,
     jlong handle,
     jstring outputPath,
     jlong startOffset,
-    bool startOffsetIsFrames
+    RecorderStartMethod startMethod
 ) {
     auto* recorder = recorderFromHandle(handle);
     if (recorder == nullptr || outputPath == nullptr) {
@@ -174,9 +177,7 @@ jboolean nativeRecorderStartWritingWithOffset(
     if (chars == nullptr) {
         return JNI_FALSE;
     }
-    const bool result = startOffsetIsFrames
-        ? recorder->startWritingAtFrame(chars, startOffset)
-        : recorder->startWriting(chars, startOffset);
+    const bool result = (recorder->*startMethod)(chars, startOffset);
     env->ReleaseStringUTFChars(outputPath, chars);
     return result ? JNI_TRUE : JNI_FALSE;
 }
@@ -193,7 +194,7 @@ jboolean nativeRecorderStartWriting(
         handle,
         outputPath,
         startOffsetMs,
-        false
+        &OboeRecorderEngine::startWriting
     );
 }
 
@@ -209,7 +210,7 @@ jboolean nativeRecorderStartWritingAtFrame(
         handle,
         outputPath,
         startOffsetFrames,
-        true
+        &OboeRecorderEngine::startWritingAtFrame
     );
 }
 
@@ -314,18 +315,44 @@ jboolean nativeRecorderHasFailed(JNIEnv*, jobject, jlong handle) {
     return JNI_TRUE;
 }
 
-jint nativeRecorderGetLastErrorCode(JNIEnv*, jobject, jlong handle) {
+jobject nativeRecorderGetFailureSnapshot(JNIEnv* env, jobject, jlong handle) {
+    OboeRecorderFailureSnapshot snapshot{
+        OboeRecorderErrorCode::WriterFileError,
+        "recorder handle is invalid",
+    };
     if (auto* recorder = recorderFromHandle(handle)) {
-        return static_cast<jint>(recorder->getLastErrorCode());
+        snapshot = recorder->getFailureSnapshot();
     }
-    return static_cast<jint>(OboeRecorderErrorCode::WriterFileError);
-}
 
-jstring nativeRecorderGetLastError(JNIEnv* env, jobject, jlong handle) {
-    if (auto* recorder = recorderFromHandle(handle)) {
-        return env->NewStringUTF(recorder->getLastError().c_str());
+    jclass clazz = env->FindClass(
+        "com/neuralsound/audio/internal/NativeRecorderFailureSnapshot"
+    );
+    if (clazz == nullptr) {
+        return nullptr;
     }
-    return env->NewStringUTF("recorder handle is invalid");
+    jmethodID constructor = env->GetMethodID(
+        clazz,
+        "<init>",
+        "(ILjava/lang/String;)V"
+    );
+    if (constructor == nullptr) {
+        env->DeleteLocalRef(clazz);
+        return nullptr;
+    }
+    jstring message = env->NewStringUTF(snapshot.message.c_str());
+    if (message == nullptr) {
+        env->DeleteLocalRef(clazz);
+        return nullptr;
+    }
+    jobject result = env->NewObject(
+        clazz,
+        constructor,
+        static_cast<jint>(snapshot.errorCode),
+        message
+    );
+    env->DeleteLocalRef(message);
+    env->DeleteLocalRef(clazz);
+    return result;
 }
 
 void nativeRecorderRelease(JNIEnv*, jobject, jlong handle) {
@@ -446,8 +473,7 @@ JNINativeMethod kRecorderMethods[] = {
     {"nativeGetWrittenDurationMs", "(J)J", reinterpret_cast<void*>(nativeRecorderGetWrittenDurationMs)},
     {"nativeGetSampleRate", "(J)I", reinterpret_cast<void*>(nativeRecorderGetSampleRate)},
     {"nativeHasFailed", "(J)Z", reinterpret_cast<void*>(nativeRecorderHasFailed)},
-    {"nativeGetLastErrorCode", "(J)I", reinterpret_cast<void*>(nativeRecorderGetLastErrorCode)},
-    {"nativeGetLastError", "(J)Ljava/lang/String;", reinterpret_cast<void*>(nativeRecorderGetLastError)},
+    {"nativeGetFailureSnapshot", "(J)Lcom/neuralsound/audio/internal/NativeRecorderFailureSnapshot;", reinterpret_cast<void*>(nativeRecorderGetFailureSnapshot)},
     {"nativeReleaseMicSession", "(J)V", reinterpret_cast<void*>(nativeRecorderReleaseMicSession)},
     {"nativeRelease", "(J)V", reinterpret_cast<void*>(nativeRecorderRelease)},
 };

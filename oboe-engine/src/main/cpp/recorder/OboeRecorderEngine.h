@@ -2,6 +2,8 @@
 
 #include "Pcm16WavWriter.h"
 #include "RecorderCallbackFence.h"
+#include "RecorderCanonicalRatePolicy.h"
+#include "RecorderFailureState.h"
 #include "RecorderWaveformAccumulator.h"
 #include "SPSCRingBuffer.h"
 #include "SampleRateConverter.h"
@@ -23,15 +25,6 @@ struct OboeRecordingResult {
     int64_t writtenFrames = 0;
     int sampleRate = 0;
     bool failed = false;
-};
-
-enum class OboeRecorderErrorCode : int32_t {
-    None = 0,
-    MicSessionOpenFailed = 1,
-    StreamDisconnected = 2,
-    WriterOverflow = 3,
-    WriterFileError = 4,
-    InvalidOutput = 5,
 };
 
 struct OboeRecorderTelemetry {
@@ -65,8 +58,7 @@ public:
     int64_t getWrittenDurationMs() const;
     int getSampleRate() const;
     bool hasFailed() const;
-    OboeRecorderErrorCode getLastErrorCode() const;
-    std::string getLastError() const;
+    OboeRecorderFailureSnapshot getFailureSnapshot() const;
 
     oboe::DataCallbackResult onAudioReady(
         oboe::AudioStream* audioStream,
@@ -77,11 +69,16 @@ public:
     void onErrorAfterClose(oboe::AudioStream* audioStream, oboe::Result error) override;
 
 private:
+    enum class StartOffsetUnit {
+        Milliseconds,
+        PcmFrames,
+    };
+
     static constexpr int kMaxCallbackFrames = 4096;
     static constexpr int kWriterChunkFrames = 2048;
     // Canonical recording rate written to the WAV file, regardless of the
     // device's native mic rate. Input is resampled to this rate on capture.
-    static constexpr int kOutputSampleRate = 44'100;
+    static constexpr int kOutputSampleRate = kRecorderCanonicalSampleRate;
 
     bool openInputStream(oboe::SharingMode sharingMode);
     bool configureResampler(int deviceSampleRate);
@@ -89,7 +86,7 @@ private:
     bool startWritingLocked(
         const std::string& outputPath,
         int64_t startOffset,
-        bool startOffsetIsFrames
+        StartOffsetUnit startOffsetUnit
     );
     void pauseWritingLocked();
     void runWriterLoop(Pcm16WavWriter& writer);
@@ -101,7 +98,6 @@ private:
 
     mutable std::mutex operationMutex_;
     mutable std::mutex streamMutex_;
-    mutable std::mutex errorMutex_;
     std::shared_ptr<oboe::AudioStream> inputStream_;
     std::thread writerThread_;
     SPSCRingBuffer ringBuffer_;
@@ -119,13 +115,11 @@ private:
     std::atomic<bool> micSessionActive_{false};
     std::atomic<bool> writerRunning_{false};
     std::atomic<bool> writerStopRequested_{false};
-    std::atomic<bool> failed_{false};
-    std::atomic<OboeRecorderErrorCode> lastErrorCode_{OboeRecorderErrorCode::None};
+    RecorderFailureState failureState_;
     std::atomic<float> peak_{0.0f};
     std::atomic<int64_t> framesWritten_{0};
     std::atomic<int64_t> acceptedFrames_{0};
     std::atomic<uint64_t> takeId_{0};
     RecorderCallbackFence callbackFence_;
     std::atomic<int> sampleRate_{0};
-    std::string lastError_;
 };

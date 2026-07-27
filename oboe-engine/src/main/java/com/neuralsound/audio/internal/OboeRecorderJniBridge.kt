@@ -10,6 +10,11 @@ internal data class NativeRecordingResult(
     val failed: Boolean,
 )
 
+internal data class NativeRecorderFailureSnapshot(
+    val code: Int,
+    val message: String,
+)
+
 internal enum class NativeRecorderFailure(val code: Int) {
     NONE(0),
     MIC_SESSION_OPEN_FAILED(1),
@@ -47,8 +52,10 @@ internal interface OboeRecorderNativeBridge {
     fun getWrittenDurationMs(owner: NativeRecorderSession, handle: Long): Long
     fun getSampleRate(owner: NativeRecorderSession, handle: Long): Int
     fun hasFailed(owner: NativeRecorderSession, handle: Long): Boolean
-    fun getLastFailure(owner: NativeRecorderSession, handle: Long): NativeRecorderFailure
-    fun getLastError(owner: NativeRecorderSession, handle: Long): String
+    fun getFailureSnapshot(
+        owner: NativeRecorderSession,
+        handle: Long,
+    ): NativeRecorderFailureSnapshot
     fun releaseMicSession(owner: NativeRecorderSession, handle: Long)
     fun release(owner: NativeRecorderSession, handle: Long)
 }
@@ -117,15 +124,11 @@ internal object OboeRecorderJniBridge : OboeRecorderNativeBridge {
         return owner.nativeHasFailed(handle)
     }
 
-    override fun getLastFailure(
+    override fun getFailureSnapshot(
         owner: NativeRecorderSession,
         handle: Long,
-    ): NativeRecorderFailure {
-        return NativeRecorderFailure.fromCode(owner.nativeGetLastErrorCode(handle))
-    }
-
-    override fun getLastError(owner: NativeRecorderSession, handle: Long): String {
-        return owner.nativeGetLastError(handle)
+    ): NativeRecorderFailureSnapshot {
+        return owner.nativeGetFailureSnapshot(handle)
     }
 
     override fun releaseMicSession(owner: NativeRecorderSession, handle: Long) {

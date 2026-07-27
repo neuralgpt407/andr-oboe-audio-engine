@@ -49,8 +49,17 @@ class FramePreciseRecorderApiTest {
             error = RecorderError.WriterFileError,
             message = "disk full",
         )
+        val state = RecorderState(
+            status = RecorderStatus.FAILED,
+            currentFailure = failure,
+        )
 
         assertEquals(RecorderError.WriterFileError, failure.error)
         assertEquals("disk full", failure.message)
+        assertEquals(RecorderStatus.FAILED, state.status)
+        assertEquals(failure, state.currentFailure)
+        assertThrows(IllegalArgumentException::class.java) {
+            RecorderState(status = RecorderStatus.FAILED, currentFailure = null)
+        }
     }
 }

@@ -65,7 +65,7 @@ Pcm16WavWriter::~Pcm16WavWriter() {
 
 bool Pcm16WavWriter::createFullDurationDraft(const std::string& path, int sampleRate, int64_t frameCount) {
     if (path.empty() || sampleRate <= 0 || frameCount < 0 ||
-        frameCount > std::numeric_limits<uint32_t>::max() / kBytesPerSample) {
+        frameCount > kMaxFrameCount) {
         return false;
     }
     const std::filesystem::path filePath(path);
@@ -144,8 +144,8 @@ bool Pcm16WavWriter::openAtFrame(
     pendingSamples_.clear();
     pendingOriginalSamples_.clear();
     lastError_.clear();
-    if (startOffsetFrames > std::numeric_limits<int64_t>::max() / kBytesPerSample) {
-        lastError_ = "start offset is too large";
+    if (startOffsetFrames > kMaxFrameCount) {
+        lastError_ = "start offset exceeds RIFF/WAV capacity";
         return false;
     }
     writeOffsetBytes_ = startOffsetFrames * kBytesPerSample;
@@ -172,6 +172,11 @@ bool Pcm16WavWriter::openAtFrame(
     }
     initialDataBytes_ = info.frameCount * kBytesPerSample;
     currentDataBytes_ = initialDataBytes_;
+    if (writeOffsetBytes_ > maxWritableDataBytes()) {
+        lastError_ = "start offset exceeds RIFF/WAV capacity";
+        file_.close();
+        return false;
+    }
     isOpen_ = true;
     if (!ensureDataSize(writeOffsetBytes_)) {
         close();
@@ -297,9 +302,16 @@ bool Pcm16WavWriter::parseExistingFile(Pcm16WavInfo* info) {
 }
 
 bool Pcm16WavWriter::writeHeader(uint32_t dataBytes) {
-    const uint32_t riffBytes = static_cast<uint32_t>(std::min<int64_t>(
-        std::numeric_limits<uint32_t>::max(), dataOffsetBytes_ + static_cast<int64_t>(dataBytes) - 8
-    ));
+    const int64_t riffBytes64 =
+        dataOffsetBytes_ + static_cast<int64_t>(dataBytes) - 8;
+    if (
+        riffBytes64 < 0 ||
+        riffBytes64 > std::numeric_limits<uint32_t>::max()
+    ) {
+        lastError_ = "wav RIFF size is too large";
+        return false;
+    }
+    const uint32_t riffBytes = static_cast<uint32_t>(riffBytes64);
     std::array<char, 4> values{};
     for (int index = 0; index < 4; ++index) values[index] = static_cast<char>((dataBytes >> (index * 8)) & 0xff);
     file_.seekp(dataSizeFieldOffset_, std::ios::beg);
@@ -315,7 +327,7 @@ bool Pcm16WavWriter::writeHeader(uint32_t dataBytes) {
 }
 
 bool Pcm16WavWriter::updateHeader() {
-    if (currentDataBytes_ > std::numeric_limits<uint32_t>::max()) {
+    if (currentDataBytes_ > maxWritableDataBytes()) {
         lastError_ = "wav data is too large";
         return false;
     }
@@ -340,6 +352,17 @@ bool Pcm16WavWriter::ensureDataSize(int64_t targetBytes) {
     return true;
 }
 
+int64_t Pcm16WavWriter::maxWritableDataBytes() const {
+    const int64_t riffOverheadBytes = dataOffsetBytes_ - 8;
+    if (
+        riffOverheadBytes < 0 ||
+        riffOverheadBytes > std::numeric_limits<uint32_t>::max()
+    ) {
+        return 0;
+    }
+    return std::numeric_limits<uint32_t>::max() - riffOverheadBytes;
+}
+
 bool Pcm16WavWriter::readOriginalSample(int64_t dataByteOffset, int16_t* sample) {
     if (dataByteOffset + kBytesPerSample > currentDataBytes_) {
         *sample = 0;
@@ -357,6 +380,10 @@ bool Pcm16WavWriter::readOriginalSample(int64_t dataByteOffset, int16_t* sample)
 }
 
 bool Pcm16WavWriter::writeSample(int16_t sample) {
+    if (writeCursorBytes_ > maxWritableDataBytes() - kBytesPerSample) {
+        lastError_ = "wav data is too large";
+        return false;
+    }
     if (!ensureDataSize(writeCursorBytes_ + kBytesPerSample)) return false;
     file_.seekp(dataOffsetBytes_ + writeCursorBytes_, std::ios::beg);
     file_.write(reinterpret_cast<const char*>(&sample), sizeof(sample));
