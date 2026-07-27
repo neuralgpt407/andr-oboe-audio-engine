@@ -48,6 +48,14 @@ class PublicModelsTest {
     }
 
     @Test
+    fun `channel gain supports the native boost range`() {
+        assertEquals(2f, ChannelGain(left = 2f, right = 2f).left)
+        assertThrows(IllegalArgumentException::class.java) {
+            ChannelGain(left = 2.01f)
+        }
+    }
+
+    @Test
     fun `recording result requires a file and valid sample rate`() {
         val incomplete = RecordingResult(
             file = null,

@@ -114,7 +114,7 @@ internal class DefaultMixerSession(
             }
 
             is MixerPreparationResult.Failure -> fail(
-                AudioFailure.NativeOperationFailed(
+                result.failure ?: AudioFailure.NativeOperationFailed(
                     operation = "prepare",
                     detail = result.message,
                 )
@@ -124,17 +124,15 @@ internal class DefaultMixerSession(
 
     override fun appendTrack(track: MixerTrack): AudioResult {
         readyFailure()?.let { return it }
-        val appended = controller.appendTrack(
+        val appendResult = controller.appendTrack(
             type = track.id,
             uri = track.uri,
             initialVolume = track.mix.volume,
             muted = track.mix.muted,
             initialChannelGain = track.mix.channelGain,
         )
-        if (!appended) {
-            return AudioResult.Failure(
-                AudioFailure.NativeOperationFailed(operation = "appendTrack")
-            )
+        if (appendResult is MixerAppendResult.Failure) {
+            return AudioResult.Failure(appendResult.failure)
         }
         controller.setTrackOffset(track.id, track.offsetMs)
         publishRuntimeState()

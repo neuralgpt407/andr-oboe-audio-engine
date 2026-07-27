@@ -82,6 +82,18 @@ bool NativeAudioDecoder::initialize(int fd) {
     if (AMediaFormat_getInt64(selectedFormat, AMEDIAFORMAT_KEY_DURATION, &durationUs)) {
         durationMs_ = durationUs / 1000;
     }
+    if (sampleRate_ <= 0 || channelCount_ < 1 || channelCount_ > 2) {
+        __android_log_print(
+            ANDROID_LOG_ERROR,
+            kTag,
+            "Unsupported audio format: sampleRate=%d channelCount=%d",
+            sampleRate_,
+            channelCount_
+        );
+        AMediaFormat_delete(selectedFormat);
+        release();
+        return false;
+    }
 
     codec_ = AMediaCodec_createDecoderByType(mime.c_str());
     if (codec_ == nullptr) {
@@ -189,17 +201,37 @@ int NativeAudioDecoder::drainOutput(int16_t* output, int maxSamples) {
     if (outputIndex == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
         AMediaFormat* format = AMediaCodec_getOutputFormat(codec_);
         if (format != nullptr) {
-            int32_t sampleRate = 0;
-            int32_t channelCount = 0;
-            if (AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_SAMPLE_RATE, &sampleRate)) {
-                sampleRate_ = sampleRate;
-            }
-            if (AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &channelCount)) {
-                channelCount_ = channelCount;
+            int32_t decodedSampleRate = sampleRate_;
+            int32_t decodedChannelCount = channelCount_;
+            AMediaFormat_getInt32(
+                format,
+                AMEDIAFORMAT_KEY_SAMPLE_RATE,
+                &decodedSampleRate
+            );
+            AMediaFormat_getInt32(
+                format,
+                AMEDIAFORMAT_KEY_CHANNEL_COUNT,
+                &decodedChannelCount
+            );
+            if (
+                decodedSampleRate != sampleRate_ ||
+                decodedChannelCount < 1 ||
+                decodedChannelCount > 2
+            ) {
+                __android_log_print(
+                    ANDROID_LOG_ERROR,
+                    kTag,
+                    "Decoder output format changed to unsupported sampleRate=%d channelCount=%d",
+                    decodedSampleRate,
+                    decodedChannelCount
+                );
+                isEndOfStream_ = true;
+            } else {
+                channelCount_ = decodedChannelCount;
             }
             AMediaFormat_delete(format);
         }
-        return 0;
+        return isEndOfStream_ ? -1 : 0;
     }
     if (outputIndex < 0) return 0;
 
@@ -294,8 +326,8 @@ void NativeAudioDecoder::release() {
     inputDone_ = false;
     isEndOfStream_ = false;
     trimBeforeUs_ = -1;
-    sampleRate_ = 44100;
-    channelCount_ = 2;
+    sampleRate_ = 0;
+    channelCount_ = 0;
     durationMs_ = 0;
 }
 

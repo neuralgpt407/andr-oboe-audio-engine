@@ -1,9 +1,19 @@
 package com.neuralsound.audio.internal
 
+import com.neuralsound.audio.AudioFailure
+
 sealed interface MixerPreparationResult {
     data object Success : MixerPreparationResult
 
-    data class Failure(val message: String) : MixerPreparationResult
+    data class Failure(
+        val message: String,
+        val failure: AudioFailure? = null,
+    ) : MixerPreparationResult
+}
+
+internal sealed interface MixerAppendResult {
+    data object Success : MixerAppendResult
+    data class Failure(val failure: AudioFailure) : MixerAppendResult
 }
 
 internal object MixerPreparationPolicy {

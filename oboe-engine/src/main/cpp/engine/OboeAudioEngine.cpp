@@ -64,14 +64,26 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
                 return false;
             }
             if (i == 0) {
-                sampleRate_ = std::max(1, thread->getSampleRate());
+                sampleRate_ = thread->getSampleRate();
+            } else if (thread->getSampleRate() != sampleRate_) {
+                __android_log_print(
+                    ANDROID_LOG_ERROR,
+                    kTag,
+                    "Track %d sample rate %d does not match mixer rate %d",
+                    i,
+                    thread->getSampleRate(),
+                    sampleRate_
+                );
+                return false;
             }
             durationMs_ = std::max<int64_t>(durationMs_, thread->getDurationMs());
             if (durations != nullptr && durations[i] > 0) {
                 durationMs_ = std::max(durationMs_, durations[i]);
             }
-            thread->start();
             decoderThreads_.push_back(std::move(thread));
+        }
+        for (auto& thread : decoderThreads_) {
+            thread->start();
         }
     }
 
@@ -98,6 +110,16 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
 bool OboeAudioEngine::appendTrack(int fd, float volume, bool muted, float leftGain, float rightGain) {
     auto thread = std::make_unique<NativeDecoderThread>();
     if (!thread->initialize(fd)) return false;
+    if (thread->getSampleRate() != sampleRate_) {
+        __android_log_print(
+            ANDROID_LOG_ERROR,
+            kTag,
+            "Appended track sample rate %d does not match mixer rate %d",
+            thread->getSampleRate(),
+            sampleRate_
+        );
+        return false;
+    }
 
     thread->start();
 
@@ -114,8 +136,8 @@ bool OboeAudioEngine::appendTrack(int fd, float volume, bool muted, float leftGa
 
         const int index = trackCount_;
         volumes_[index].store(std::clamp(volume, 0.0f, 1.0f), std::memory_order_release);
-        leftGains_[index].store(std::clamp(leftGain, 0.0f, 1.0f), std::memory_order_release);
-        rightGains_[index].store(std::clamp(rightGain, 0.0f, 1.0f), std::memory_order_release);
+        leftGains_[index].store(std::clamp(leftGain, 0.0f, 2.0f), std::memory_order_release);
+        rightGains_[index].store(std::clamp(rightGain, 0.0f, 2.0f), std::memory_order_release);
         mutes_[index].store(muted, std::memory_order_release);
         trackHeadFrames_[index].store(
             appendAnchorFrame_.load(std::memory_order_acquire),
@@ -363,8 +385,8 @@ void OboeAudioEngine::setMute(int trackIdx, bool muted) {
 
 void OboeAudioEngine::setChannelGain(int trackIdx, float leftGain, float rightGain) {
     if (trackIdx < 0 || trackIdx >= trackCount_) return;
-    leftGains_[trackIdx].store(std::clamp(leftGain, 0.0f, 1.0f), std::memory_order_relaxed);
-    rightGains_[trackIdx].store(std::clamp(rightGain, 0.0f, 1.0f), std::memory_order_relaxed);
+    leftGains_[trackIdx].store(std::clamp(leftGain, 0.0f, 2.0f), std::memory_order_relaxed);
+    rightGains_[trackIdx].store(std::clamp(rightGain, 0.0f, 2.0f), std::memory_order_relaxed);
 }
 
 void OboeAudioEngine::setTrackOffsetMs(int trackIdx, int64_t offsetMs) {

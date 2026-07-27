@@ -19,6 +19,48 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class OboeEngineSmokeTest {
     @Test
+    fun rejectsMismatchedTrackRatesWithTypedFailure() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val canonical = createSilentWav(
+            file = File(context.cacheDir, "oboe-format-44100.wav"),
+            sampleRate = 44_100,
+        )
+        val mismatched = createSilentWav(
+            file = File(context.cacheDir, "oboe-format-48000.wav"),
+            sampleRate = 48_000,
+        )
+        val mixer = AudioEngine(context).createMixerSession()
+        val mismatchedId = TrackId("mismatched")
+
+        try {
+            val result = mixer.prepare(
+                MixerRequest(
+                    tracks = listOf(
+                        MixerTrack(TrackId("canonical"), Uri.fromFile(canonical)),
+                        MixerTrack(mismatchedId, Uri.fromFile(mismatched)),
+                    )
+                )
+            )
+
+            val failure = (result as AudioResult.Failure).failure
+            assertEquals(
+                AudioFailure.UnsupportedTrackFormat(
+                    trackId = mismatchedId,
+                    sampleRate = 48_000,
+                    channelCount = 2,
+                    requiredSampleRate = 44_100,
+                ),
+                failure,
+            )
+            assertEquals(MixerStatus.FAILED, mixer.state.value.status)
+        } finally {
+            mixer.close()
+            canonical.delete()
+            mismatched.delete()
+        }
+    }
+
+    @Test
     fun prepareAppendSwitchSeekAndEffects() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val original = createSilentWav(File(context.cacheDir, "oboe-smoke-original.wav"))
@@ -86,8 +128,10 @@ class OboeEngineSmokeTest {
         }
     }
 
-    private fun createSilentWav(file: File): File {
-        val sampleRate = 44_100
+    private fun createSilentWav(
+        file: File,
+        sampleRate: Int = 44_100,
+    ): File {
         val channelCount = 2
         val bitsPerSample = 16
         val frameCount = sampleRate

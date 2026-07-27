@@ -31,8 +31,8 @@ private:
     AMediaExtractor* extractor_ = nullptr;
     AMediaCodec* codec_ = nullptr;
     int dupFd_ = -1;
-    int sampleRate_ = 44100;
-    int channelCount_ = 2;
+    int sampleRate_ = 0;
+    int channelCount_ = 0;
     int64_t durationMs_ = 0;
     int64_t trimBeforeUs_ = -1;
     bool isEndOfStream_ = false;

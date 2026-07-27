@@ -41,10 +41,6 @@ internal class MixerTrackState(
         }
     }
 
-    fun toggleMute() {
-        _isMuted.value = !_isMuted.value
-    }
-
     fun setMuted(muted: Boolean) {
         _isMuted.value = muted
     }
