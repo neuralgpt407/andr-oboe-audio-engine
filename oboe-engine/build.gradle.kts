@@ -128,19 +128,5 @@ afterEvaluate {
                 }
             }
         }
-        repositories {
-            val actor = System.getenv("GITHUB_ACTOR")
-            val token = System.getenv("GITHUB_TOKEN")
-            if (!actor.isNullOrBlank() && !token.isNullOrBlank()) {
-                maven {
-                    name = "GitHubPackages"
-                    url = uri("https://maven.pkg.github.com/neuralgpt407/andr-oboe-audio-engine")
-                    credentials {
-                        username = actor
-                        password = token
-                    }
-                }
-            }
-        }
     }
 }

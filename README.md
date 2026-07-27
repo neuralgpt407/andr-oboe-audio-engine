@@ -8,9 +8,9 @@ recovery, and optional Media3 video synchronization.
 
 | Artifact | Purpose |
 | --- | --- |
-| `com.neuralsound.audio:oboe-engine:<version>` | Oboe playback, effects, recording, and resampling |
-| `com.neuralsound.audio:oboe-media3:<version>` | Optional muted-video synchronization backed by Media3 |
-| `com.neuralsound.audio:oboe-engine:<version>:native-symbols@zip` | Unstripped native symbols for Play Console and Crashlytics |
+| `com.github.neuralgpt407.andr-oboe-audio-engine:oboe-engine:<tag>` | Oboe playback, effects, recording, and resampling |
+| `com.github.neuralgpt407.andr-oboe-audio-engine:oboe-media3:<tag>` | Optional muted-video synchronization backed by Media3 |
+| `com.github.neuralgpt407.andr-oboe-audio-engine:oboe-engine:<tag>:native-symbols@zip` | Unstripped native symbols for Play Console and Crashlytics |
 
 The Android baseline is min SDK 24, compile SDK 36, NDK 29, CMake 3.22.1,
 Java 11, and Kotlin 2.0. The published native ABIs are `arm64-v8a` and
@@ -27,41 +27,41 @@ Create `local.properties` with your Android SDK location, then run:
 ./gradlew publishToMavenLocal
 ```
 
-## Consume from GitHub Packages
+## Consume from JitPack
 
-Add the package repository to `settings.gradle.kts`. Keep credentials in
-environment variables or user-level Gradle properties, never in a project:
+Add the public JitPack repository to `settings.gradle.kts`. No username or
+token is required:
 
 ```kotlin
 dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://maven.pkg.github.com/neuralgpt407/andr-oboe-audio-engine") {
-            credentials {
-                username = providers.gradleProperty("gpr.user")
-                    .orElse(providers.environmentVariable("GITHUB_ACTOR"))
-                    .get()
-                password = providers.gradleProperty("gpr.key")
-                    .orElse(providers.environmentVariable("GITHUB_TOKEN"))
-                    .get()
-            }
-        }
+        maven("https://jitpack.io")
     }
 }
 ```
 
-Then add one or both artifacts:
+Use the core artifact for playback and recording:
 
 ```kotlin
 dependencies {
-    implementation("com.neuralsound.audio:oboe-engine:0.1.0")
-    implementation("com.neuralsound.audio:oboe-media3:0.1.0")
+    implementation(
+        "com.github.neuralgpt407.andr-oboe-audio-engine:oboe-engine:v0.1.0"
+    )
 }
 ```
 
-For local development, put `gpr.user` and a token with `read:packages` in
-`~/.gradle/gradle.properties`.
+Use the Media3 artifact instead when video synchronization is required. It
+brings `oboe-engine` transitively:
+
+```kotlin
+dependencies {
+    implementation(
+        "com.github.neuralgpt407.andr-oboe-audio-engine:oboe-media3:v0.1.0"
+    )
+}
+```
 
 ## Multitrack playback
 
@@ -156,9 +156,16 @@ native capture reports a disconnect or writer overflow asynchronously.
 
 ## Release and symbols
 
-Create a GitHub release/tag such as `v0.1.0`. The publish workflow derives the
-Maven version from the tag and publishes both AARs plus the
-`native-symbols.zip` classifier.
+Create and push an immutable Git tag such as `v0.1.0`, then look up
+`neuralgpt407/andr-oboe-audio-engine` on
+[JitPack](https://jitpack.io/#neuralgpt407/andr-oboe-audio-engine). JitPack
+builds the two Maven publications from that tag; there is no package upload or
+registry credential. The tag is the dependency version, including its `v`
+prefix.
+
+Use semantic versioning: patch releases for compatible fixes, minor releases
+for compatible features, and major releases for breaking public API changes.
+Never move or reuse a published tag.
 
 Consumer apps should resolve the symbol classifier into their Play/Crashlytics
 symbol packaging task instead of reading this project’s build directory.

@@ -27,3 +27,6 @@ jobs:
           :oboe-engine:assembleRelease
           :oboe-media3:assembleRelease
           :sample:assembleDebug
+          :oboe-engine:publishToMavenLocal
+          :oboe-media3:publishToMavenLocal
+          -PVERSION_NAME=ci
