@@ -8,10 +8,12 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
+import com.neuralsound.audio.AudioFailure
 import com.neuralsound.audio.AudioResult
 import com.neuralsound.audio.MixerSession
 import com.neuralsound.audio.MixerState
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,6 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class Media3MixerSession internal constructor(
@@ -30,6 +34,7 @@ class Media3MixerSession internal constructor(
     private val applicationContext = context.applicationContext
     private val closed = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val prepareMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _videoState = MutableStateFlow(Media3VideoState())
     val videoState: StateFlow<Media3VideoState> = _videoState.asStateFlow()
@@ -49,13 +54,30 @@ class Media3MixerSession internal constructor(
     }
 
     suspend fun prepare(request: Media3MixerRequest): AudioResult {
-        check(!closed.get()) { "Media3MixerSession is closed" }
-        prepareVideo(request.videoUri)
-        val result = mixer.prepare(request.audio)
-        if (result is AudioResult.Failure) {
-            releaseVideo()
+        return prepareMutex.withLock {
+            if (closed.get()) {
+                return@withLock AudioResult.Failure(AudioFailure.Released)
+            }
+            if (!prepareVideo(request.videoUri)) {
+                return@withLock AudioResult.Failure(AudioFailure.Released)
+            }
+            val result = try {
+                mixer.prepare(request.audio)
+            } catch (cancellation: CancellationException) {
+                if (closed.get()) {
+                    return@withLock AudioResult.Failure(AudioFailure.Released)
+                }
+                throw cancellation
+            }
+            if (closed.get()) {
+                releaseVideo()
+                return@withLock AudioResult.Failure(AudioFailure.Released)
+            }
+            if (result is AudioResult.Failure) {
+                releaseVideo()
+            }
+            result
         }
-        return result
     }
 
     fun notifyVideoSurfaceRecreated() {
@@ -66,18 +88,19 @@ class Media3MixerSession internal constructor(
         if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         mixer.close()
-        val resources = detachVideo()
         mainHandler.post {
-            resources.release()
+            releaseVideoOnMain()
         }
     }
 
-    private suspend fun prepareVideo(uri: android.net.Uri?) {
-        withContext(Dispatchers.Main.immediate) {
+    private suspend fun prepareVideo(uri: android.net.Uri?): Boolean {
+        return withContext(Dispatchers.Main.immediate) {
+            if (closed.get()) return@withContext false
             releaseVideoOnMain()
+            if (closed.get()) return@withContext false
             if (uri == null) {
                 _videoState.update { it.copy(firstFrameReady = true) }
-                return@withContext
+                return@withContext true
             }
             val newPlayer = ExoPlayer.Builder(applicationContext).build().apply {
                 setMediaItem(MediaItem.fromUri(uri))
@@ -86,6 +109,11 @@ class Media3MixerSession internal constructor(
             }
             val newListener = createListener()
             newPlayer.addListener(newListener)
+            if (closed.get()) {
+                newPlayer.removeListener(newListener)
+                newPlayer.release()
+                return@withContext false
+            }
             player = newPlayer
             listener = newListener
             _videoState.value = Media3VideoState(
@@ -93,6 +121,7 @@ class Media3MixerSession internal constructor(
                 hasVideo = true,
                 revision = _videoState.value.revision + 1L,
             )
+            true
         }
     }
 

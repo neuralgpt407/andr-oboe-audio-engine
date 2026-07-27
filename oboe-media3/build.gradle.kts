@@ -36,6 +36,8 @@ dependencies {
     api(libs.androidx.media3.exoplayer)
     api(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
 }
 
 afterEvaluate {
