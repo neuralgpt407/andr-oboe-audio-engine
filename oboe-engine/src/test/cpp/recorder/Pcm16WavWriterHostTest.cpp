@@ -1,5 +1,6 @@
 #include "../../../main/cpp/recorder/Pcm16WavHeader.h"
 #include "../../../main/cpp/recorder/Pcm16WavWriter.h"
+#include "../../../main/cpp/recorder/RecorderWaveformAccumulator.h"
 
 #include <cmath>
 #include <cstdint>
@@ -182,6 +183,129 @@ void testExtendedReplacement(const std::filesystem::path& path) {
     }
 }
 
+void testExactFrameReplacementPreservesSuffix(const std::filesystem::path& path) {
+    constexpr int kSampleRate = 44'100;
+    constexpr int64_t kStartFrame = 100;
+    require(Pcm16WavWriter::createFullDurationDraft(path.string(), kSampleRate, 1'002), "create exact-frame source");
+    std::vector<int16_t> original(1'002);
+    for (size_t index = 0; index < original.size(); ++index) {
+        original[index] = static_cast<int16_t>(500 + index);
+    }
+    writeSamples(path, original);
+
+    Pcm16WavWriter writer;
+    require(writer.openAtFrame(path.string(), kSampleRate, 1, kStartFrame), "open non-millisecond frame offset");
+    std::vector<int16_t> replacement(300, -4'000);
+    require(writer.write(replacement.data(), replacement.size()), "write exact-frame replacement");
+    require(writer.close(), "close exact-frame replacement");
+    require(writer.framesWritten() == static_cast<int64_t>(replacement.size()), "exact-frame writer reports every accepted frame");
+
+    Pcm16WavInfo info;
+    require(Pcm16WavWriter::validateDraft(path.string(), kSampleRate, &info), "validate exact-frame replacement");
+    require(info.frameCount == static_cast<int64_t>(original.size()), "contained replacement retains duration");
+    const auto after = readAll(path);
+    for (size_t index = 0; index < static_cast<size_t>(kStartFrame); ++index) {
+        require(readLe16(after, 44 + index * 2) == original[index], "exact-frame replacement preserves prefix");
+    }
+    for (size_t index = kStartFrame + replacement.size(); index < original.size(); ++index) {
+        require(readLe16(after, 44 + index * 2) == original[index], "exact-frame replacement preserves suffix");
+    }
+    require(
+        readLe16(after, 44 + (kStartFrame + 220) * 2) != original[kStartFrame + 220],
+        "replacement begins from the requested PCM-frame region"
+    );
+}
+
+void testTenFramePreciseContinuationCycles(const std::filesystem::path& path) {
+    constexpr int kSampleRate = 44'100;
+    constexpr int kFramesPerCycle = 1'411;
+    constexpr int kCycleCount = 10;
+    constexpr int kSuffixFrames = 73;
+    constexpr int64_t kAcceptedFrames =
+        static_cast<int64_t>(kFramesPerCycle) * kCycleCount;
+    require(
+        Pcm16WavWriter::createFullDurationDraft(
+            path.string(),
+            kSampleRate,
+            kAcceptedFrames + kSuffixFrames
+        ),
+        "create ten-cycle source"
+    );
+    std::vector<int16_t> original(
+        static_cast<size_t>(kAcceptedFrames + kSuffixFrames),
+        300
+    );
+    writeSamples(path, original);
+    const auto before = readAll(path);
+
+    int64_t cumulativeAcceptedFrames = 0;
+    for (int cycle = 0; cycle < kCycleCount; ++cycle) {
+        Pcm16WavWriter writer;
+        require(
+            writer.openAtFrame(
+                path.string(),
+                kSampleRate,
+                1,
+                cumulativeAcceptedFrames
+            ),
+            "reopen continuation at exact cumulative frame"
+        );
+        std::vector<int16_t> segment(
+            kFramesPerCycle,
+            static_cast<int16_t>(2'000 + cycle * 100)
+        );
+        RecorderWaveformAccumulator telemetry;
+        telemetry.reset(kSampleRate);
+
+        require(writer.write(segment.data(), segment.size()), "write continuation segment");
+        telemetry.appendPcm16Mono(segment.data(), kFramesPerCycle);
+        require(writer.close(), "close continuation segment");
+        require(
+            writer.framesWritten() == static_cast<int64_t>(segment.size()),
+            "accepted and written frames remain equal"
+        );
+
+        const RecorderWaveformDelta delta = telemetry.readDelta(0);
+        require(delta.firstBucketIndex == 0, "new segment telemetry cursor starts at zero");
+        require(delta.completedBucketRms.size() == 1, "accepted segment aligns to one 32 ms waveform bucket");
+        require(
+            std::fabs(
+                delta.completedBucketRms[0] -
+                    static_cast<float>(segment[0]) / 32768.0f
+            ) < 0.0001f,
+            "waveform RMS remains aligned with the accepted segment"
+        );
+        require(delta.partialBucketFrames == 0, "waveform bucket has no frame drift");
+        require(
+            telemetry.readDelta(1).completedBucketRms.empty(),
+            "consumed telemetry cursor does not replay a bucket"
+        );
+        cumulativeAcceptedFrames += writer.framesWritten();
+    }
+
+    require(cumulativeAcceptedFrames == kAcceptedFrames, "ten cycles preserve cumulative accepted frames");
+    require(
+        (cumulativeAcceptedFrames * 1'000) / kSampleRate == 319,
+        "ten cycles preserve cumulative frame-derived duration"
+    );
+    Pcm16WavInfo info;
+    require(Pcm16WavWriter::validateDraft(path.string(), kSampleRate, &info), "validate ten-cycle draft");
+    require(
+        info.frameCount == kAcceptedFrames + kSuffixFrames,
+        "ten cycles retain the untouched suffix duration"
+    );
+    const auto after = readAll(path);
+    const size_t suffixByteOffset = 44 + static_cast<size_t>(kAcceptedFrames) * 2;
+    require(
+        std::equal(
+            before.begin() + static_cast<std::ptrdiff_t>(suffixByteOffset),
+            before.end(),
+            after.begin() + static_cast<std::ptrdiff_t>(suffixByteOffset)
+        ),
+        "ten cycles retain every untouched suffix byte"
+    );
+}
+
 void testBoostAndCeiling(const std::filesystem::path& path) {
     require(Pcm16WavWriter::createFullDurationDraft(path.string(), 1000, 20), "create gain draft");
     Pcm16WavWriter writer;
@@ -212,9 +336,11 @@ int main() {
     testRiffChunkParsing(tempDir / "chunks.wav");
     testContainedReplacement(tempDir / "contained.wav");
     testExtendedReplacement(tempDir / "extended.wav");
+    testExactFrameReplacementPreservesSuffix(tempDir / "exact-frame.wav");
+    testTenFramePreciseContinuationCycles(tempDir / "ten-cycles.wav");
     testBoostAndCeiling(tempDir / "gain.wav");
 
-    std::cout << "PASS: Pcm16WavWriter full-duration validation/replacement/gain checks\n";
+    std::cout << "PASS: Pcm16WavWriter exact-frame replacement/ten-cycle continuation checks\n";
     std::cout << "artifact=" << tempDir << '\n';
     return 0;
 }

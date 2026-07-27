@@ -55,6 +55,7 @@ public:
 
     bool startMicSession();
     bool startWriting(const std::string& outputPath, int64_t startOffsetMs);
+    bool startWritingAtFrame(const std::string& outputPath, int64_t startOffsetFrames);
     void pauseWriting();
     OboeRecordingResult stopWriting();
     void releaseMicSession();
@@ -85,6 +86,11 @@ private:
     bool openInputStream(oboe::SharingMode sharingMode);
     bool configureResampler(int deviceSampleRate);
     bool startMicSessionLocked();
+    bool startWritingLocked(
+        const std::string& outputPath,
+        int64_t startOffset,
+        bool startOffsetIsFrames
+    );
     void pauseWritingLocked();
     void runWriterLoop(Pcm16WavWriter& writer);
     std::shared_ptr<oboe::AudioStream> getStream() const;

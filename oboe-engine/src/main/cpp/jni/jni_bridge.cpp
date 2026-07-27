@@ -158,7 +158,13 @@ jboolean nativeRecorderStartMicSession(JNIEnv*, jobject, jlong handle) {
     return JNI_FALSE;
 }
 
-jboolean nativeRecorderStartWriting(JNIEnv* env, jobject, jlong handle, jstring outputPath, jlong startOffsetMs) {
+jboolean nativeRecorderStartWritingWithOffset(
+    JNIEnv* env,
+    jlong handle,
+    jstring outputPath,
+    jlong startOffset,
+    bool startOffsetIsFrames
+) {
     auto* recorder = recorderFromHandle(handle);
     if (recorder == nullptr || outputPath == nullptr) {
         return JNI_FALSE;
@@ -168,9 +174,43 @@ jboolean nativeRecorderStartWriting(JNIEnv* env, jobject, jlong handle, jstring 
     if (chars == nullptr) {
         return JNI_FALSE;
     }
-    const bool result = recorder->startWriting(chars, startOffsetMs);
+    const bool result = startOffsetIsFrames
+        ? recorder->startWritingAtFrame(chars, startOffset)
+        : recorder->startWriting(chars, startOffset);
     env->ReleaseStringUTFChars(outputPath, chars);
     return result ? JNI_TRUE : JNI_FALSE;
+}
+
+jboolean nativeRecorderStartWriting(
+    JNIEnv* env,
+    jobject,
+    jlong handle,
+    jstring outputPath,
+    jlong startOffsetMs
+) {
+    return nativeRecorderStartWritingWithOffset(
+        env,
+        handle,
+        outputPath,
+        startOffsetMs,
+        false
+    );
+}
+
+jboolean nativeRecorderStartWritingAtFrame(
+    JNIEnv* env,
+    jobject,
+    jlong handle,
+    jstring outputPath,
+    jlong startOffsetFrames
+) {
+    return nativeRecorderStartWritingWithOffset(
+        env,
+        handle,
+        outputPath,
+        startOffsetFrames,
+        true
+    );
 }
 
 void nativeRecorderPauseWriting(JNIEnv*, jobject, jlong handle) {
@@ -398,6 +438,7 @@ JNINativeMethod kRecorderMethods[] = {
     {"nativeCreate", "()J", reinterpret_cast<void*>(nativeCreateRecorder)},
     {"nativeStartMicSession", "(J)Z", reinterpret_cast<void*>(nativeRecorderStartMicSession)},
     {"nativeStartWriting", "(JLjava/lang/String;J)Z", reinterpret_cast<void*>(nativeRecorderStartWriting)},
+    {"nativeStartWritingAtFrame", "(JLjava/lang/String;J)Z", reinterpret_cast<void*>(nativeRecorderStartWritingAtFrame)},
     {"nativePauseWriting", "(J)V", reinterpret_cast<void*>(nativeRecorderPauseWriting)},
     {"nativeStopWriting", "(J)[J", reinterpret_cast<void*>(nativeRecorderStopWriting)},
     {"nativeGetMicPeak", "(J)F", reinterpret_cast<void*>(nativeRecorderGetMicPeak)},

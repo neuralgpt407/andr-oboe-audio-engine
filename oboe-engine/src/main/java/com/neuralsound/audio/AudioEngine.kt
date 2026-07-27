@@ -18,4 +18,8 @@ class AudioEngine(context: Context) {
     fun createRecorderSession(): RecorderSession {
         return NativeRecorderSession()
     }
+
+    fun createFramePreciseRecorderSession(): FramePreciseRecorderSession {
+        return NativeRecorderSession()
+    }
 }

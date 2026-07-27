@@ -15,6 +15,7 @@ class RecorderWavWriterHostTest {
         val testSource = File(moduleDir, "src/test/cpp/recorder/Pcm16WavWriterHostTest.cpp")
         val headerSource = File(moduleDir, "src/main/cpp/recorder/Pcm16WavHeader.cpp")
         val writerSource = File(moduleDir, "src/main/cpp/recorder/Pcm16WavWriter.cpp")
+        val accumulatorSource = File(moduleDir, "src/main/cpp/recorder/RecorderWaveformAccumulator.cpp")
 
         val compile = runProcess(
             listOf(
@@ -23,6 +24,7 @@ class RecorderWavWriterHostTest {
                 testSource.absolutePath,
                 headerSource.absolutePath,
                 writerSource.absolutePath,
+                accumulatorSource.absolutePath,
                 "-o",
                 binary.absolutePath,
             ),

@@ -10,7 +10,23 @@ constexpr int kWriterIdleSleepMs = 2;
 
 bool OboeRecorderEngine::startWriting(const std::string& outputPath, int64_t startOffsetMs) {
     std::lock_guard<std::mutex> operationLock(operationMutex_);
-    if (outputPath.empty() || startOffsetMs < 0) {
+    return startWritingLocked(outputPath, startOffsetMs, false);
+}
+
+bool OboeRecorderEngine::startWritingAtFrame(
+    const std::string& outputPath,
+    int64_t startOffsetFrames
+) {
+    std::lock_guard<std::mutex> operationLock(operationMutex_);
+    return startWritingLocked(outputPath, startOffsetFrames, true);
+}
+
+bool OboeRecorderEngine::startWritingLocked(
+    const std::string& outputPath,
+    int64_t startOffset,
+    bool startOffsetIsFrames
+) {
+    if (outputPath.empty() || startOffset < 0) {
         failActiveTake(
             "invalid recorder output request",
             OboeRecorderErrorCode::InvalidOutput
@@ -39,10 +55,19 @@ bool OboeRecorderEngine::startWriting(const std::string& outputPath, int64_t sta
     std::promise<bool> startPromise;
     std::future<bool> started = startPromise.get_future();
     writerThread_ = std::thread(
-        [this, outputPath, startOffsetMs, promise = std::move(startPromise)]() mutable {
+        [
+            this,
+            outputPath,
+            startOffset,
+            startOffsetIsFrames,
+            promise = std::move(startPromise)
+        ]() mutable {
             Pcm16WavWriter writer;
             const int rate = sampleRate_.load(std::memory_order_acquire);
-            if (!writer.open(outputPath, rate, 1, startOffsetMs)) {
+            const bool opened = startOffsetIsFrames
+                ? writer.openAtFrame(outputPath, rate, 1, startOffset)
+                : writer.open(outputPath, rate, 1, startOffset);
+            if (!opened) {
                 {
                     std::lock_guard<std::mutex> lock(errorMutex_);
                     lastError_ = writer.lastError();

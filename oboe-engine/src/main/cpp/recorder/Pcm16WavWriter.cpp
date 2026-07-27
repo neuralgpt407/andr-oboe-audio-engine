@@ -104,6 +104,37 @@ bool Pcm16WavWriter::open(const std::string& path, int sampleRate, int channelCo
         lastError_ = "invalid wav writer parameters";
         return false;
     }
+    const int64_t wholeSeconds = startOffsetMs / 1'000;
+    const int64_t remainingMs = startOffsetMs % 1'000;
+    if (wholeSeconds > std::numeric_limits<int64_t>::max() / sampleRate) {
+        lastError_ = "start offset is too large";
+        return false;
+    }
+    const int64_t wholeFrames = wholeSeconds * sampleRate;
+    const int64_t remainingFrames =
+        (remainingMs * static_cast<int64_t>(sampleRate)) / 1'000;
+    if (wholeFrames > std::numeric_limits<int64_t>::max() - remainingFrames) {
+        lastError_ = "start offset is too large";
+        return false;
+    }
+    return openAtFrame(
+        path,
+        sampleRate,
+        channelCount,
+        wholeFrames + remainingFrames
+    );
+}
+
+bool Pcm16WavWriter::openAtFrame(
+    const std::string& path,
+    int sampleRate,
+    int channelCount,
+    int64_t startOffsetFrames
+) {
+    if (path.empty() || sampleRate <= 0 || channelCount != 1 || startOffsetFrames < 0) {
+        lastError_ = "invalid wav writer parameters";
+        return false;
+    }
     if (isOpen_) close();
 
     path_ = path;
@@ -113,12 +144,11 @@ bool Pcm16WavWriter::open(const std::string& path, int sampleRate, int channelCo
     pendingSamples_.clear();
     pendingOriginalSamples_.clear();
     lastError_.clear();
-    const int64_t offsetFrames = (startOffsetMs * static_cast<int64_t>(sampleRate_)) / 1000;
-    if (offsetFrames > std::numeric_limits<int64_t>::max() / kBytesPerSample) {
+    if (startOffsetFrames > std::numeric_limits<int64_t>::max() / kBytesPerSample) {
         lastError_ = "start offset is too large";
         return false;
     }
-    writeOffsetBytes_ = offsetFrames * kBytesPerSample;
+    writeOffsetBytes_ = startOffsetFrames * kBytesPerSample;
     writeCursorBytes_ = writeOffsetBytes_;
 
     const std::filesystem::path filePath(path_);

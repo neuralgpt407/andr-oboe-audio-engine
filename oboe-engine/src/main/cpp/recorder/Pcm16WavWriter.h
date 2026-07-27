@@ -23,6 +23,12 @@ public:
     static bool validateDraft(const std::string& path, int expectedSampleRate, Pcm16WavInfo* info);
 
     bool open(const std::string& path, int sampleRate, int channelCount, int64_t startOffsetMs);
+    bool openAtFrame(
+        const std::string& path,
+        int sampleRate,
+        int channelCount,
+        int64_t startOffsetFrames
+    );
     bool write(const int16_t* samples, size_t frameCount);
     bool close();
 

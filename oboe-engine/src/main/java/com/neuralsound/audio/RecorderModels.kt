@@ -12,6 +12,16 @@ data class RecordingRequest(
     }
 }
 
+data class FrameRecordingRequest(
+    val outputFile: File,
+    val startOffsetFrames: Long = 0L,
+) {
+    init {
+        require(startOffsetFrames >= 0L) { "Recording start frame must not be negative" }
+        require(outputFile.path.isNotBlank()) { "Recording output path must not be blank" }
+    }
+}
+
 enum class RecorderStatus {
     UNAVAILABLE,
     IDLE,
@@ -31,6 +41,11 @@ sealed interface RecorderError {
     data object InvalidOutput : RecorderError
     data object InvalidState : RecorderError
 }
+
+data class RecorderFailure(
+    val error: RecorderError,
+    val message: String? = null,
+)
 
 data class RecorderOperationResult(
     val error: RecorderError? = null,

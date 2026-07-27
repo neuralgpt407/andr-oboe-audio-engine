@@ -30,6 +30,12 @@ internal interface OboeRecorderNativeBridge {
     fun create(owner: NativeRecorderSession): Long
     fun startMicSession(owner: NativeRecorderSession, handle: Long): Boolean
     fun startWriting(owner: NativeRecorderSession, handle: Long, outputPath: String, startOffsetMs: Long): Boolean
+    fun startWritingAtFrame(
+        owner: NativeRecorderSession,
+        handle: Long,
+        outputPath: String,
+        startOffsetFrames: Long,
+    ): Boolean
     fun pauseWriting(owner: NativeRecorderSession, handle: Long)
     fun stopWriting(owner: NativeRecorderSession, handle: Long): NativeRecordingResult
     fun getMicPeak(owner: NativeRecorderSession, handle: Long): Float
@@ -61,6 +67,15 @@ internal object OboeRecorderJniBridge : OboeRecorderNativeBridge {
         startOffsetMs: Long,
     ): Boolean {
         return owner.nativeStartWriting(handle, outputPath, startOffsetMs)
+    }
+
+    override fun startWritingAtFrame(
+        owner: NativeRecorderSession,
+        handle: Long,
+        outputPath: String,
+        startOffsetFrames: Long,
+    ): Boolean {
+        return owner.nativeStartWritingAtFrame(handle, outputPath, startOffsetFrames)
     }
 
     override fun pauseWriting(owner: NativeRecorderSession, handle: Long) {
