@@ -13,6 +13,18 @@ float boundedLevel(float level) {
     return std::clamp(level, 0.0f, 1.0f);
 }
 
+float boundedRms(double squareSum, size_t count) {
+    if (count == 0) {
+        return 0.0f;
+    }
+    return boundedLevel(static_cast<float>(
+        std::sqrt(std::max(
+            0.0,
+            squareSum / static_cast<double>(count)
+        ))
+    ));
+}
+
 } // namespace
 
 WaveformRmsAccumulator::WaveformRmsAccumulator(
@@ -70,12 +82,7 @@ std::vector<float> WaveformRmsAccumulator::finish() {
     std::vector<float> levels;
     levels.reserve(completedBuckets_.size());
     for (const Bucket& bucket : completedBuckets_) {
-        const double meanSquare = bucket.levelCount == 0
-            ? 0.0
-            : bucket.squareSum / static_cast<double>(bucket.levelCount);
-        levels.push_back(boundedLevel(
-            static_cast<float>(std::sqrt(std::max(0.0, meanSquare)))
-        ));
+        levels.push_back(boundedRms(bucket.squareSum, bucket.levelCount));
     }
     return levels;
 }
@@ -109,13 +116,7 @@ void WaveformRmsAccumulator::completeWindow(
     if (frameCount == 0) {
         return;
     }
-    const float level = boundedLevel(static_cast<float>(
-        std::sqrt(std::max(
-            0.0,
-            squareSum / static_cast<double>(frameCount)
-        ))
-    ));
-    appendRmsLevel(level);
+    appendRmsLevel(boundedRms(squareSum, frameCount));
 }
 
 void WaveformRmsAccumulator::appendRmsLevel(float level) {
