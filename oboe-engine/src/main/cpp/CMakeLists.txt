@@ -50,6 +50,11 @@ target_include_directories(neuralsound_audio_engine PRIVATE
 # never collide with the identical resampler compiled inside liboboe.so.
 target_compile_definitions(neuralsound_audio_engine PRIVATE RESAMPLER_OUTER_NAMESPACE=neuralsound_dsp)
 
+set_target_properties(neuralsound_audio_engine PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+)
+
 target_link_libraries(neuralsound_audio_engine
     android
     log
@@ -57,4 +62,13 @@ target_link_libraries(neuralsound_audio_engine
     oboe::oboe
 )
 
-target_link_options(neuralsound_audio_engine PRIVATE "-Wl,--build-id")
+set(NATIVE_EXPORT_MAP "${CMAKE_CURRENT_SOURCE_DIR}/jni/exports.map")
+set_property(
+    TARGET neuralsound_audio_engine
+    APPEND
+    PROPERTY LINK_DEPENDS "${NATIVE_EXPORT_MAP}"
+)
+target_link_options(neuralsound_audio_engine PRIVATE
+    "-Wl,--build-id"
+    "-Wl,--version-script=${NATIVE_EXPORT_MAP}"
+)

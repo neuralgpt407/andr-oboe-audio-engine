@@ -6,7 +6,7 @@
     native <methods>;
 }
 -keep class com.neuralsound.audio.internal.NativeRecorderFailureSnapshot { *; }
--keepclasseswithmembernames,includedescriptorclasses class com.neuralsound.audio.NativeAudioWaveformAnalyzer {
+-keepclasseswithmembernames,includedescriptorclasses class com.neuralsound.audio.internal.JniNativeWaveformBridge {
     native <methods>;
 }
 -keep class com.neuralsound.audio.RecorderTelemetry { *; }

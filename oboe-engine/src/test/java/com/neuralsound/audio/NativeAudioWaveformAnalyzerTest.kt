@@ -1,5 +1,8 @@
-package com.neuralsound.audio
+package com.neuralsound.audio.internal
 
+import com.neuralsound.audio.NativeAudioWaveformAnalyzer
+import com.neuralsound.audio.NativeWaveformAnalysisError
+import com.neuralsound.audio.NativeWaveformAnalysisResult
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -24,9 +27,9 @@ class NativeAudioWaveformAnalyzerTest {
     @Test
     fun nativeSuccessRetainsAbsoluteRmsLevelsAndReleasesResources() = runBlocking {
         val bridge = FakeWaveformBridge(levels = floatArrayOf(0f, 0.25f, 1f))
-        val analyzer = analyzer(bridge)
+        val runtime = runtime(bridge)
 
-        val result = analyzer.analyzeFileDescriptor(fd = 7, maxSamples = 3)
+        val result = runtime.analyzeFileDescriptor(fd = 7, maxSamples = 3)
 
         assertTrue(result is NativeWaveformAnalysisResult.Success)
         assertArrayEquals(
@@ -52,7 +55,7 @@ class NativeAudioWaveformAnalyzerTest {
             assertEquals(failure, NativeWaveformFailure.fromCode(failure.code))
             val bridge = FakeWaveformBridge(levels = null, failure = failure)
 
-            val result = analyzer(bridge).analyzeFileDescriptor(fd = 7)
+            val result = runtime(bridge).analyzeFileDescriptor(fd = 7)
 
             assertEquals(
                 NativeWaveformAnalysisResult.Failure(expectedError),
@@ -69,7 +72,7 @@ class NativeAudioWaveformAnalyzerTest {
             NativeWaveformAnalysisResult.Failure(
                 NativeWaveformAnalysisError.Unreadable,
             ),
-            analyzer(invalidFdBridge).analyzeFileDescriptor(fd = -1),
+            runtime(invalidFdBridge).analyzeFileDescriptor(fd = -1),
         )
         assertEquals(0, invalidFdBridge.createCount)
 
@@ -79,7 +82,7 @@ class NativeAudioWaveformAnalyzerTest {
                 NativeWaveformAnalysisResult.Failure(
                     NativeWaveformAnalysisError.InvalidArgument,
                 ),
-                analyzer(invalidBoundBridge).analyzeFileDescriptor(
+                runtime(invalidBoundBridge).analyzeFileDescriptor(
                     fd = 7,
                     maxSamples = maxSamples,
                 ),
@@ -92,7 +95,7 @@ class NativeAudioWaveformAnalyzerTest {
             NativeWaveformAnalysisResult.Failure(
                 NativeWaveformAnalysisError.NativeUnavailable,
             ),
-            analyzer(unavailableBridge, nativeAvailable = false)
+            runtime(unavailableBridge, nativeAvailable = false)
                 .analyzeFileDescriptor(fd = 7),
         )
         assertEquals(0, unavailableBridge.createCount)
@@ -105,7 +108,7 @@ class NativeAudioWaveformAnalyzerTest {
             NativeWaveformAnalysisResult.Failure(
                 NativeWaveformAnalysisError.NativeUnavailable,
             ),
-            analyzer(noHandleBridge).analyzeFileDescriptor(fd = 7),
+            runtime(noHandleBridge).analyzeFileDescriptor(fd = 7),
         )
         assertEquals(1, noHandleBridge.createCount)
         assertEquals(0, noHandleBridge.releaseCalls.get())
@@ -124,7 +127,7 @@ class NativeAudioWaveformAnalyzerTest {
         malformed.forEach { levels ->
             val bridge = FakeWaveformBridge(levels = levels)
 
-            val result = analyzer(bridge).analyzeFileDescriptor(fd = 7)
+            val result = runtime(bridge).analyzeFileDescriptor(fd = 7)
 
             assertEquals(
                 NativeWaveformAnalysisResult.Failure(
@@ -142,9 +145,9 @@ class NativeAudioWaveformAnalyzerTest {
             levels = null,
             blockUntilCancelled = true,
         )
-        val analyzer = analyzer(bridge)
+        val runtime = runtime(bridge)
         val job = launch(Dispatchers.Default) {
-            analyzer.analyzeFileDescriptor(fd = 7)
+            runtime.analyzeFileDescriptor(fd = 7)
         }
 
         assertTrue(bridge.started.await(2, TimeUnit.SECONDS))
@@ -163,13 +166,13 @@ class NativeAudioWaveformAnalyzerTest {
             failure = NativeWaveformFailure.CANCELLED,
             blockUntilCancelled = true,
         )
-        val analyzer = analyzer(bridge)
+        val runtime = runtime(bridge)
         val result = async(Dispatchers.Default) {
-            analyzer.analyzeFileDescriptor(fd = 7)
+            runtime.analyzeFileDescriptor(fd = 7)
         }
 
         assertTrue(bridge.started.await(2, TimeUnit.SECONDS))
-        analyzer.cancel()
+        runtime.cancel()
 
         assertEquals(
             NativeWaveformAnalysisResult.Failure(
@@ -187,7 +190,7 @@ class NativeAudioWaveformAnalyzerTest {
             analyzeFailure = UnsatisfiedLinkError("missing waveform symbol"),
         )
 
-        val result = analyzer(bridge).analyzeFileDescriptor(fd = 7)
+        val result = runtime(bridge).analyzeFileDescriptor(fd = 7)
 
         assertEquals(
             NativeWaveformAnalysisResult.Failure(
@@ -198,10 +201,10 @@ class NativeAudioWaveformAnalyzerTest {
         assertEquals(1, bridge.releaseCalls.get())
     }
 
-    private fun analyzer(
-        bridge: NativeAudioWaveformAnalyzer.NativeWaveformBridge,
+    private fun runtime(
+        bridge: NativeWaveformBridge,
         nativeAvailable: Boolean = true,
-    ) = NativeAudioWaveformAnalyzer(
+    ) = WaveformAnalyzerRuntime(
         dispatcher = Dispatchers.Default,
         nativeBridge = bridge,
         nativeLibraryLoader = { nativeAvailable },
@@ -213,7 +216,7 @@ class NativeAudioWaveformAnalyzerTest {
         private val blockUntilCancelled: Boolean = false,
         private val analyzeFailure: Throwable? = null,
         private val createdHandle: Long = 1L,
-    ) : NativeAudioWaveformAnalyzer.NativeWaveformBridge {
+    ) : NativeWaveformBridge {
         val started = CountDownLatch(1)
         val cancelled = CountDownLatch(1)
         val released = CountDownLatch(1)
@@ -223,7 +226,6 @@ class NativeAudioWaveformAnalyzerTest {
             private set
 
         override fun create(
-            owner: NativeAudioWaveformAnalyzer,
             fd: Int,
             maxOutputSamples: Int,
         ): Long {
@@ -232,7 +234,6 @@ class NativeAudioWaveformAnalyzerTest {
         }
 
         override fun analyze(
-            owner: NativeAudioWaveformAnalyzer,
             handle: Long,
         ): FloatArray? {
             started.countDown()
@@ -246,16 +247,15 @@ class NativeAudioWaveformAnalyzerTest {
         }
 
         override fun failure(
-            owner: NativeAudioWaveformAnalyzer,
             handle: Long,
-        ): NativeWaveformFailure = failure
+        ): Int = failure.code
 
-        override fun cancel(owner: NativeAudioWaveformAnalyzer, handle: Long) {
+        override fun cancel(handle: Long) {
             lifecycleEvents += "cancel"
             cancelled.countDown()
         }
 
-        override fun release(owner: NativeAudioWaveformAnalyzer, handle: Long) {
+        override fun release(handle: Long) {
             lifecycleEvents += "release"
             releaseCalls.incrementAndGet()
             released.countDown()

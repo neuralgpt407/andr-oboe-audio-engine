@@ -513,7 +513,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
 
     if (!registerRequiredNativeMethods(
         env,
-        "com/neuralsound/audio/NativeAudioWaveformAnalyzer",
+        "com/neuralsound/audio/internal/JniNativeWaveformBridge",
         kWaveformMethods,
         sizeof(kWaveformMethods) / sizeof(kWaveformMethods[0])
     )) {
