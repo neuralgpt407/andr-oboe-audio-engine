@@ -235,9 +235,43 @@ class DefaultMixerSessionNormalizationBehaviorTest {
         assertEquals(MixerStatus.RELEASED, session.state.value.status)
     }
 
+    @Test
+    fun closeDuringSuccessfulPlayKeepsReleasedStateAndReturnsReleased() = runBlocking {
+        lateinit var session: DefaultMixerSession
+        val controller = FakeMixerController(
+            beforePlayResult = { session.close() },
+        )
+        session = DefaultMixerSession(controller)
+        assertEquals(
+            AudioResult.Success,
+            session.prepare(MixerRequest(tracks = listOf(original))),
+        )
+
+        assertEquals(AudioResult.Failure(AudioFailure.Released), session.play())
+        assertEquals(MixerStatus.RELEASED, session.state.value.status)
+    }
+
+    @Test
+    fun closeDuringSuccessfulPauseKeepsReleasedStateAndReturnsReleased() = runBlocking {
+        lateinit var session: DefaultMixerSession
+        val controller = FakeMixerController(
+            beforePauseResult = { session.close() },
+        )
+        session = DefaultMixerSession(controller)
+        assertEquals(
+            AudioResult.Success,
+            session.prepare(MixerRequest(tracks = listOf(original))),
+        )
+
+        assertEquals(AudioResult.Failure(AudioFailure.Released), session.pause())
+        assertEquals(MixerStatus.RELEASED, session.state.value.status)
+    }
+
     private class FakeMixerController(
         private var prepareResult: MixerPreparationResult = MixerPreparationResult.Success,
         private val beforePrepareResult: suspend () -> Unit = {},
+        private val beforePlayResult: () -> Unit = {},
+        private val beforePauseResult: () -> Unit = {},
     ) : MixerController {
         override val routeRevision: StateFlow<Long> = MutableStateFlow(0L)
         override val isPlaying: MutableStateFlow<Boolean> = MutableStateFlow(false)
@@ -312,11 +346,13 @@ class DefaultMixerSessionNormalizationBehaviorTest {
         }
 
         override fun play(): MixerPlaybackResult {
+            beforePlayResult()
             isPlaying.value = true
             return MixerPlaybackResult.Success
         }
 
         override fun pause(): MixerPlaybackResult {
+            beforePauseResult()
             isPlaying.value = false
             return MixerPlaybackResult.Success
         }

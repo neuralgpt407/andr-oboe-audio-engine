@@ -185,20 +185,32 @@ internal class DefaultMixerSession(
 
     override fun play(): AudioResult {
         readyFailure()?.let { return it }
-        return controller.play().toAudioResult().also { result ->
-            if (result == AudioResult.Success) {
-                _state.update { it.copy(status = MixerStatus.PLAYING, failure = null) }
+        val result = controller.play().toAudioResult()
+        if (result == AudioResult.Success) {
+            _state.update { current ->
+                if (closed.get() || current.status == MixerStatus.RELEASED) {
+                    current
+                } else {
+                    current.copy(status = MixerStatus.PLAYING, failure = null)
+                }
             }
         }
+        return releasedFailure() ?: result
     }
 
     override fun pause(): AudioResult {
         readyFailure()?.let { return it }
-        return controller.pause().toAudioResult().also { result ->
-            if (result == AudioResult.Success) {
-                _state.update { it.copy(status = MixerStatus.PAUSED, failure = null) }
+        val result = controller.pause().toAudioResult()
+        if (result == AudioResult.Success) {
+            _state.update { current ->
+                if (closed.get() || current.status == MixerStatus.RELEASED) {
+                    current
+                } else {
+                    current.copy(status = MixerStatus.PAUSED, failure = null)
+                }
             }
         }
+        return releasedFailure() ?: result
     }
 
     override fun seekTo(positionMs: Long): AudioResult {
