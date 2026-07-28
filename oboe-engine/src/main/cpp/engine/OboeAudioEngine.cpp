@@ -148,14 +148,14 @@ bool OboeAudioEngine::appendTrack(
         std::lock_guard<std::mutex> lock(trackMutex_);
         if (trackCount_ >= kMaxTracks) return false;
         index = trackCount_;
-        const int64_t offsetFrames = (offsetMs * sampleRate_) / 1000;
+        const int64_t offsetFrames = saturatedScaleDivide(offsetMs, sampleRate_, 1000);
         sourceAnchorFrame = trackSourceFrame(
             appendAnchorFrame_.load(std::memory_order_acquire),
             offsetFrames
         );
-        sourceAnchorUs = std::max<int64_t>(
-            0,
-            appendAnchorUs_.load(std::memory_order_acquire) + offsetMs * 1000
+        sourceAnchorUs = trackSourceFrame(
+            appendAnchorUs_.load(std::memory_order_acquire),
+            saturatedMultiply(offsetMs, 1000)
         );
     }
 
@@ -373,9 +373,9 @@ bool OboeAudioEngine::seekTo(int64_t ms) {
     for (int i = 0; i < trackCount_; ++i) {
         auto& thread = decoderThreads_[static_cast<size_t>(i)];
         thread->pause();
-        const int64_t sourceMs = std::max<int64_t>(
-            0,
-            clampedMs + trackOffsetsMs_[i].load(std::memory_order_acquire)
+        const int64_t sourceMs = trackSourceFrame(
+            clampedMs,
+            trackOffsetsMs_[i].load(std::memory_order_acquire)
         );
         thread->seekTo(sourceMs);
     }
@@ -591,9 +591,11 @@ oboe::DataCallbackResult OboeAudioEngine::onAudioReady(
 
     if (renderEndReached_.load(std::memory_order_acquire) &&
         outputFifo_.availableFrames() == 0) {
-        const int64_t durationFrames = (
-            durationMs_.load(std::memory_order_acquire) * sampleRate_
-        ) / 1000;
+        const int64_t durationFrames = saturatedScaleDivide(
+            durationMs_.load(std::memory_order_acquire),
+            sampleRate_,
+            1000
+        );
         sourceFramesConsumed_.store(durationFrames, std::memory_order_release);
         isPlaying_.store(false, std::memory_order_release);
     }
@@ -723,10 +725,13 @@ bool OboeAudioEngine::waitForRenderPrebuffer(int minFrames, int timeoutMs) {
 void OboeAudioEngine::resetTrackHeadFrames(int64_t framePosition) {
     const int count = trackCount_;
     for (int i = 0; i < count; ++i) {
-        const int64_t offsetFrames =
-            (trackOffsetsMs_[i].load(std::memory_order_acquire) * sampleRate_) / 1000;
+        const int64_t offsetFrames = saturatedScaleDivide(
+            trackOffsetsMs_[i].load(std::memory_order_acquire),
+            sampleRate_,
+            1000
+        );
         trackHeadFrames_[i].store(
-            std::max<int64_t>(0, framePosition + offsetFrames),
+            trackSourceFrame(framePosition, offsetFrames),
             std::memory_order_release
         );
         trackJoined_[i].store(true, std::memory_order_release);
@@ -845,9 +850,11 @@ int OboeAudioEngine::mixSourceFrames(float* outputInterleaved, int frames, bool&
     const int requestedSamples = requestedFrames * kOutputChannelCount;
     std::memset(outputInterleaved, 0, static_cast<size_t>(requestedSamples) * sizeof(float));
     const int64_t chunkStartFrame = sourceFramesRendered_.load(std::memory_order_acquire);
-    const int64_t durationFrames = (
-        durationMs_.load(std::memory_order_acquire) * sampleRate_
-    ) / 1000;
+    const int64_t durationFrames = saturatedScaleDivide(
+        durationMs_.load(std::memory_order_acquire),
+        sampleRate_,
+        1000
+    );
     if (chunkStartFrame >= durationFrames) {
         allEnd = true;
         return 0;
@@ -871,10 +878,16 @@ int OboeAudioEngine::mixSourceFrames(float* outputInterleaved, int frames, bool&
     bool waitForReadiness = false;
 
     for (int i = 0; i < trackCount; ++i) {
-        const int64_t offsetFrames =
-            (trackOffsetsMs_[i].load(std::memory_order_acquire) * sampleRate_) / 1000;
-        const int64_t sourceFrameCount =
-            (static_cast<int64_t>(threads[static_cast<size_t>(i)]->getDurationMs()) * sampleRate_) / 1000;
+        const int64_t offsetFrames = saturatedScaleDivide(
+            trackOffsetsMs_[i].load(std::memory_order_acquire),
+            sampleRate_,
+            1000
+        );
+        const int64_t sourceFrameCount = saturatedScaleDivide(
+            static_cast<int64_t>(threads[static_cast<size_t>(i)]->getDurationMs()),
+            sampleRate_,
+            1000
+        );
         const TrackReadWindow readWindow = trackReadWindow(
             chunkStartFrame,
             requestedFrames,

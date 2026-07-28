@@ -51,4 +51,26 @@ class MixerPreparationPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun positiveOffsetOverflowSaturatesAtTheEndOfTheTimeline() {
+        assertEquals(
+            Long.MAX_VALUE,
+            TrackReadOffsetPolicy.sourcePositionMs(
+                timelinePositionMs = Long.MAX_VALUE - 5L,
+                offsetMs = 10L,
+            ),
+        )
+    }
+
+    @Test
+    fun negativeOffsetOverflowRemainsBeforeTheSourceStart() {
+        assertEquals(
+            null,
+            TrackReadOffsetPolicy.sourcePositionMs(
+                timelinePositionMs = Long.MIN_VALUE + 5L,
+                offsetMs = -10L,
+            ),
+        )
+    }
 }

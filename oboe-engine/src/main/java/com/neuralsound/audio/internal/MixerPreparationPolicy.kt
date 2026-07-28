@@ -110,6 +110,11 @@ internal object MixerPreparationPolicy {
 
 internal object TrackReadOffsetPolicy {
     fun sourcePositionMs(timelinePositionMs: Long, offsetMs: Long): Long? {
-        return (timelinePositionMs + offsetMs).takeIf { it >= 0L }
+        val sourcePositionMs = when {
+            offsetMs > 0L && timelinePositionMs > Long.MAX_VALUE - offsetMs -> Long.MAX_VALUE
+            offsetMs < 0L && timelinePositionMs < Long.MIN_VALUE - offsetMs -> Long.MIN_VALUE
+            else -> timelinePositionMs + offsetMs
+        }
+        return sourcePositionMs.takeIf { it >= 0L }
     }
 }
