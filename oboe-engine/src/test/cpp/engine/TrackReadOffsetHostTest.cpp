@@ -33,6 +33,20 @@ int main() {
         "negative millisecond scaling saturates instead of overflowing"
     );
     require(
+        saturatedMillisecondsToMicroseconds(1'250) == 1'250'000,
+        "decoder seek conversion preserves ordinary millisecond values"
+    );
+    require(
+        saturatedMillisecondsToMicroseconds(std::numeric_limits<int64_t>::max()) ==
+            std::numeric_limits<int64_t>::max(),
+        "decoder seek conversion saturates extreme positive milliseconds"
+    );
+    require(
+        saturatedMillisecondsToMicroseconds(std::numeric_limits<int64_t>::min()) ==
+            std::numeric_limits<int64_t>::min(),
+        "decoder seek conversion saturates extreme negative milliseconds"
+    );
+    require(
         saturatedScaleDivide(std::numeric_limits<int64_t>::max(), 48000, 1000) ==
             std::numeric_limits<int64_t>::max(),
         "positive millisecond-to-frame conversion saturates"

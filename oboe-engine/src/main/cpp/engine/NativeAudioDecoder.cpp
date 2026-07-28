@@ -1,4 +1,5 @@
 #include "NativeAudioDecoder.h"
+#include "TrackReadOffset.h"
 
 #include <android/log.h>
 #include <fcntl.h>
@@ -326,7 +327,7 @@ bool NativeAudioDecoder::configureOutputFormat(int sampleRate, int channelCount)
 }
 
 bool NativeAudioDecoder::seekTo(int64_t ms) {
-    return seekToUs(ms * 1000);
+    return seekToUs(saturatedMillisecondsToMicroseconds(ms));
 }
 
 bool NativeAudioDecoder::seekToUs(int64_t us) {

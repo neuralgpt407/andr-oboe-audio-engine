@@ -155,7 +155,7 @@ bool OboeAudioEngine::appendTrack(
         );
         sourceAnchorUs = trackSourceFrame(
             appendAnchorUs_.load(std::memory_order_acquire),
-            saturatedMultiply(offsetMs, 1000)
+            saturatedMillisecondsToMicroseconds(offsetMs)
         );
     }
 
@@ -432,12 +432,16 @@ bool OboeAudioEngine::seekTo(int64_t ms) {
         }
     }
 
-    const int64_t clampedFramePosition = (clampedMs * sampleRate_) / 1000;
+    const int64_t clampedFramePosition =
+        saturatedScaleDivide(clampedMs, sampleRate_, 1000);
     totalFramesWritten_.store(clampedFramePosition, std::memory_order_release);
     sourceFramesConsumed_.store(clampedFramePosition, std::memory_order_release);
     sourceFramesRendered_.store(clampedFramePosition, std::memory_order_release);
     appendAnchorFrame_.store(clampedFramePosition, std::memory_order_release);
-    appendAnchorUs_.store(clampedMs * 1000, std::memory_order_release);
+    appendAnchorUs_.store(
+        saturatedMillisecondsToMicroseconds(clampedMs),
+        std::memory_order_release
+    );
     resetTrackHeadFrames(clampedFramePosition);
     sourceFrameRemainder_.store(0.0, std::memory_order_release);
     renderEndReached_.store(false, std::memory_order_release);
@@ -489,7 +493,11 @@ int64_t OboeAudioEngine::getPositionMs() const {
     const int64_t durationMs = durationMs_.load(std::memory_order_acquire);
     return std::min(
         durationMs,
-        (sourceFramesConsumed_.load(std::memory_order_acquire) * 1000) / sampleRate_
+        saturatedScaleDivide(
+            sourceFramesConsumed_.load(std::memory_order_acquire),
+            1000,
+            sampleRate_
+        )
     );
 }
 
@@ -754,7 +762,10 @@ bool OboeAudioEngine::tryJoinAppendedTrack(
     // Discard decoded audio between the track's head and the live render
     // head. Decode outpaces realtime, so the gap shrinks every chunk until
     // it closes; already-playing tracks are never stalled on this one.
-    int64_t skipSamples = (targetSourceFrame - headFrame) * kOutputChannelCount;
+    int64_t skipSamples = saturatedMultiply(
+        targetSourceFrame - headFrame,
+        kOutputChannelCount
+    );
     int64_t discardedFrames = 0;
     while (skipSamples > 0) {
         const size_t available = thread->available();

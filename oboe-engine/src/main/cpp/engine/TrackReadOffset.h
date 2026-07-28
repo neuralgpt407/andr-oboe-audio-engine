@@ -49,6 +49,10 @@ inline int64_t saturatedMultiply(int64_t left, int64_t right) {
     return left * right;
 }
 
+inline int64_t saturatedMillisecondsToMicroseconds(int64_t milliseconds) {
+    return saturatedMultiply(milliseconds, 1000);
+}
+
 inline int64_t saturatedScaleDivide(
     int64_t value,
     int64_t multiplier,

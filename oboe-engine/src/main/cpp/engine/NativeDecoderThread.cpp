@@ -1,4 +1,5 @@
 #include "NativeDecoderThread.h"
+#include "TrackReadOffset.h"
 
 #include <android/log.h>
 #include <android/set_abort_message.h>
@@ -45,7 +46,7 @@ void NativeDecoderThread::resume() {
 }
 
 void NativeDecoderThread::seekTo(int64_t ms) {
-    seekToUs(ms * 1000);
+    seekToUs(saturatedMillisecondsToMicroseconds(ms));
 }
 
 void NativeDecoderThread::seekToUs(int64_t us) {
