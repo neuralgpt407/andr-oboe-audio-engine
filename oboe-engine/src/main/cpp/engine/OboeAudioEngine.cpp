@@ -57,7 +57,7 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
     {
         std::lock_guard<std::mutex> lock(trackMutex_);
         trackCount_ = trackCount;
-        durationMs_ = 0;
+        durationMs_.store(0, std::memory_order_release);
         decoderThreads_.reserve(static_cast<size_t>(trackCount));
         for (int i = 0; i < trackCount; ++i) {
             auto thread = std::make_unique<NativeDecoderThread>();
@@ -69,9 +69,21 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
                 __android_log_print(ANDROID_LOG_ERROR, kTag, "Decoder init failed for track %d", i);
                 return false;
             }
-            durationMs_ = std::max<int64_t>(durationMs_, thread->getDurationMs());
+            durationMs_.store(
+                std::max<int64_t>(
+                    durationMs_.load(std::memory_order_acquire),
+                    thread->getDurationMs()
+                ),
+                std::memory_order_release
+            );
             if (durations != nullptr && durations[i] > 0) {
-                durationMs_ = std::max(durationMs_, durations[i]);
+                durationMs_.store(
+                    std::max(
+                        durationMs_.load(std::memory_order_acquire),
+                        durations[i]
+                    ),
+                    std::memory_order_release
+                );
             }
             decoderThreads_.push_back(std::move(thread));
         }
@@ -100,7 +112,14 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
     return true;
 }
 
-bool OboeAudioEngine::appendTrack(int fd, float volume, bool muted, float leftGain, float rightGain) {
+bool OboeAudioEngine::appendTrack(
+    int fd,
+    float volume,
+    bool muted,
+    float leftGain,
+    float rightGain,
+    int64_t offsetMs
+) {
     std::lock_guard<std::mutex> appendLock(appendMutex_);
     lastFailure_.store(NativeAudioFailureSnapshot{}.encode(), std::memory_order_release);
     auto thread = std::make_unique<NativeDecoderThread>();
@@ -122,44 +141,57 @@ bool OboeAudioEngine::appendTrack(int fd, float volume, bool muted, float leftGa
 
     thread->start();
 
+    int index = -1;
+    int64_t sourceAnchorFrame = 0;
+    int64_t sourceAnchorUs = 0;
     {
         std::lock_guard<std::mutex> lock(trackMutex_);
         if (trackCount_ >= kMaxTracks) return false;
+        index = trackCount_;
+        const int64_t offsetFrames = (offsetMs * sampleRate_) / 1000;
+        sourceAnchorFrame = trackSourceFrame(
+            appendAnchorFrame_.load(std::memory_order_acquire),
+            offsetFrames
+        );
+        sourceAnchorUs = std::max<int64_t>(
+            0,
+            appendAnchorUs_.load(std::memory_order_acquire) + offsetMs * 1000
+        );
+    }
 
-        // Extractor seeks (MP3 especially) land with a per-target timeline
-        // error, so seek the new decoder to the exact anchor the live tracks
-        // used and let tryJoinAppendedTrack discard decoded PCM up to the
-        // render head — the only sample-exact way to match their timeline.
-        thread->seekToUs(appendAnchorUs_.load(std::memory_order_acquire));
-        thread->resume();
+    // Extractor seeks (MP3 especially) land with a per-target timeline
+    // error, so seek the new decoder to the same offset-adjusted source anchor
+    // used by existing tracks. Joining then discards up to the live source
+    // frame without blocking the render thread on decoder reset.
+    thread->seekToUs(sourceAnchorUs);
+    thread->resume();
 
-        const int index = trackCount_;
-        const auto resetStart = std::chrono::steady_clock::now();
-        while (
-            thread->isSeekPending() &&
-            std::chrono::steady_clock::now() - resetStart < std::chrono::milliseconds(250)
-        ) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-        const NativeAudioDecoderFailure resetFailure = thread->isSeekPending()
-            ? NativeAudioDecoderFailure::DecoderFailure
-            : thread->getFailureKind();
-        if (resetFailure != NativeAudioDecoderFailure::None) {
-            lastFailure_.store(
-                NativeAudioFailureSnapshot{resetFailure, index}.encode(),
-                std::memory_order_release
-            );
-            return false;
-        }
+    const auto resetStart = std::chrono::steady_clock::now();
+    while (
+        thread->isSeekPending() &&
+        std::chrono::steady_clock::now() - resetStart < std::chrono::milliseconds(250)
+    ) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    const NativeAudioDecoderFailure resetFailure = thread->isSeekPending()
+        ? NativeAudioDecoderFailure::DecoderFailure
+        : thread->getFailureKind();
+    if (resetFailure != NativeAudioDecoderFailure::None) {
+        lastFailure_.store(
+            NativeAudioFailureSnapshot{resetFailure, index}.encode(),
+            std::memory_order_release
+        );
+        return false;
+    }
 
+    {
+        std::lock_guard<std::mutex> lock(trackMutex_);
         volumes_[index].store(std::clamp(volume, 0.0f, 1.0f), std::memory_order_release);
         leftGains_[index].store(std::clamp(leftGain, 0.0f, 2.0f), std::memory_order_release);
         rightGains_[index].store(std::clamp(rightGain, 0.0f, 2.0f), std::memory_order_release);
         mutes_[index].store(muted, std::memory_order_release);
-        trackHeadFrames_[index].store(
-            appendAnchorFrame_.load(std::memory_order_acquire),
-            std::memory_order_release
-        );
+        trackOffsetsMs_[index].store(offsetMs, std::memory_order_release);
+        trackHeadFrames_[index].store(sourceAnchorFrame, std::memory_order_release);
         trackJoined_[index].store(false, std::memory_order_release);
         trackFadeFramesRemaining_[index].store(kAppendFadeInFrames, std::memory_order_release);
         trackJoinDeadlineFrames_[index].store(
@@ -167,7 +199,13 @@ bool OboeAudioEngine::appendTrack(int fd, float volume, bool muted, float leftGa
                 static_cast<int64_t>(sampleRate_) * kAppendJoinWatchdogSeconds,
             std::memory_order_release
         );
-        durationMs_ = std::max<int64_t>(durationMs_, thread->getDurationMs());
+        durationMs_.store(
+            std::max<int64_t>(
+                durationMs_.load(std::memory_order_acquire),
+                thread->getDurationMs()
+            ),
+            std::memory_order_release
+        );
         decoderThreads_.push_back(std::move(thread));
         trackCount_ += 1;
     }
@@ -268,7 +306,7 @@ void OboeAudioEngine::stop() {
     }
     decoderThreads_.clear();
     trackCount_ = 0;
-    durationMs_ = 0;
+    durationMs_.store(0, std::memory_order_release);
     totalFramesWritten_.store(0, std::memory_order_release);
     sourceFramesConsumed_.store(0, std::memory_order_release);
     sourceFramesRendered_.store(0, std::memory_order_release);
@@ -278,12 +316,14 @@ void OboeAudioEngine::stop() {
 }
 
 bool OboeAudioEngine::seekTo(int64_t ms) {
+    std::lock_guard<std::mutex> appendLock(appendMutex_);
     {
         std::lock_guard<std::mutex> lock(trackMutex_);
         if (decoderThreads_.empty()) return false;
     }
 
-    const int64_t clampedMs = std::clamp(ms, static_cast<int64_t>(0), durationMs_);
+    const int64_t durationMs = durationMs_.load(std::memory_order_acquire);
+    const int64_t clampedMs = std::clamp(ms, static_cast<int64_t>(0), durationMs);
     const bool wasPlaying = isPlaying_.load(std::memory_order_acquire);
     // Local copy: a concurrent device-change restart may swap the stream;
     // calls on a stale copy just return ErrorClosed and the polls below
@@ -446,14 +486,15 @@ void OboeAudioEngine::setPitchSemitones(int semitones) {
 }
 
 int64_t OboeAudioEngine::getPositionMs() const {
+    const int64_t durationMs = durationMs_.load(std::memory_order_acquire);
     return std::min(
-        durationMs_,
+        durationMs,
         (sourceFramesConsumed_.load(std::memory_order_acquire) * 1000) / sampleRate_
     );
 }
 
 int64_t OboeAudioEngine::getDurationMs() const {
-    return durationMs_;
+    return durationMs_.load(std::memory_order_acquire);
 }
 
 int OboeAudioEngine::getSampleRate() const {
@@ -550,7 +591,9 @@ oboe::DataCallbackResult OboeAudioEngine::onAudioReady(
 
     if (renderEndReached_.load(std::memory_order_acquire) &&
         outputFifo_.availableFrames() == 0) {
-        const int64_t durationFrames = (durationMs_ * sampleRate_) / 1000;
+        const int64_t durationFrames = (
+            durationMs_.load(std::memory_order_acquire) * sampleRate_
+        ) / 1000;
         sourceFramesConsumed_.store(durationFrames, std::memory_order_release);
         isPlaying_.store(false, std::memory_order_release);
     }
@@ -694,18 +737,19 @@ void OboeAudioEngine::resetTrackHeadFrames(int64_t framePosition) {
 bool OboeAudioEngine::tryJoinAppendedTrack(
     int index,
     NativeDecoderThread* thread,
-    int64_t chunkStartFrame,
+    int64_t timelineFrame,
+    int64_t targetSourceFrame,
     int requestedSamples
 ) {
     int64_t headFrame = trackHeadFrames_[index].load(std::memory_order_acquire);
-    if (chunkStartFrame < headFrame) {
+    if (targetSourceFrame < headFrame) {
         return false;
     }
 
     // Discard decoded audio between the track's head and the live render
     // head. Decode outpaces realtime, so the gap shrinks every chunk until
     // it closes; already-playing tracks are never stalled on this one.
-    int64_t skipSamples = (chunkStartFrame - headFrame) * kOutputChannelCount;
+    int64_t skipSamples = (targetSourceFrame - headFrame) * kOutputChannelCount;
     int64_t discardedFrames = 0;
     while (skipSamples > 0) {
         const size_t available = thread->available();
@@ -732,12 +776,12 @@ bool OboeAudioEngine::tryJoinAppendedTrack(
             trackJoined_[index].store(true, std::memory_order_release);
             return true;
         }
-        maybeRescueStalledJoin(index, chunkStartFrame);
+        maybeRescueStalledJoin(index, timelineFrame);
         return false;
     }
 
     if (!eos && thread->available() < static_cast<size_t>(requestedSamples)) {
-        maybeRescueStalledJoin(index, chunkStartFrame);
+        maybeRescueStalledJoin(index, timelineFrame);
         return false;
     }
 
@@ -801,7 +845,9 @@ int OboeAudioEngine::mixSourceFrames(float* outputInterleaved, int frames, bool&
     const int requestedSamples = requestedFrames * kOutputChannelCount;
     std::memset(outputInterleaved, 0, static_cast<size_t>(requestedSamples) * sizeof(float));
     const int64_t chunkStartFrame = sourceFramesRendered_.load(std::memory_order_acquire);
-    const int64_t durationFrames = (durationMs_ * sampleRate_) / 1000;
+    const int64_t durationFrames = (
+        durationMs_.load(std::memory_order_acquire) * sampleRate_
+    ) / 1000;
     if (chunkStartFrame >= durationFrames) {
         allEnd = true;
         return 0;
@@ -846,6 +892,7 @@ int OboeAudioEngine::mixSourceFrames(float* outputInterleaved, int frames, bool&
                 i,
                 threads[static_cast<size_t>(i)],
                 chunkStartFrame,
+                trackSourceFrame(chunkStartFrame, offsetFrames),
                 readWindow.sourceFrames * kOutputChannelCount
             )) {
             continue;

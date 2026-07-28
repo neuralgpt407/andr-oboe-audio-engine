@@ -43,6 +43,7 @@ internal interface MixerController {
         initialVolume: Float,
         muted: Boolean,
         initialChannelGain: ChannelGain,
+        initialOffsetMs: Long,
     ): MixerAppendResult
 
     fun play(): MixerPlaybackResult

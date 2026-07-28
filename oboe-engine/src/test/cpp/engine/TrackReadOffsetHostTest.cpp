@@ -13,6 +13,15 @@ void require(bool value, const char* message) {
 }
 
 int main() {
+    require(
+        trackSourceFrame(1000, 120) == 1120,
+        "positive offset advances the appended decoder source anchor"
+    );
+    require(
+        trackSourceFrame(50, -120) == 0,
+        "negative offset clamps an appended decoder source anchor to zero"
+    );
+
     const auto advanced = trackReadWindow(1000, 100, 2000, 120);
     require(advanced.leadingSilentFrames == 0, "positive offset does not add leading silence");
     require(advanced.sourceFrames == 100, "positive offset reads advanced source frames");

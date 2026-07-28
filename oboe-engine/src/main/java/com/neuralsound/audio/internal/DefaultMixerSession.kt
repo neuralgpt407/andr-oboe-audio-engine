@@ -152,11 +152,11 @@ internal class DefaultMixerSession(
             initialVolume = track.mix.volume,
             muted = track.mix.muted,
             initialChannelGain = track.mix.channelGain,
+            initialOffsetMs = track.offsetMs,
         )
         if (appendResult is MixerAppendResult.Failure) {
             return AudioResult.Failure(appendResult.failure)
         }
-        controller.setTrackOffset(track.id, track.offsetMs)
         publishRuntimeState()
         return AudioResult.Success
     }

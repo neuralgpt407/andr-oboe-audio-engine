@@ -131,6 +131,59 @@ void testStreamingReductionUsesRms() {
     );
 }
 
+void testSingleSampleBoundHandlesUnknownOrUnderreportedDuration() {
+    const auto analyze = [](int64_t expectedDurationMs) {
+        std::atomic<bool> cancelled{false};
+        int calls = 0;
+        return analyzeWaveformChunks(
+            1000,
+            1,
+            cancelled,
+            [&calls](int16_t* output, int) {
+                if (calls++ > 0) {
+                    return DecodePcm16ChunkResult{
+                        DecodePcm16EndOfStream{}
+                    };
+                }
+                constexpr size_t kWindowFrames = 32;
+                constexpr size_t kWindowCount = 3;
+                for (size_t window = 0; window < kWindowCount; ++window) {
+                    const int16_t amplitude = window == 1
+                        ? std::numeric_limits<int16_t>::min()
+                        : 0;
+                    for (size_t frame = 0; frame < kWindowFrames; ++frame) {
+                        const size_t sample = (window * kWindowFrames + frame) * 2;
+                        output[sample] = amplitude;
+                        output[sample + 1] = amplitude;
+                    }
+                }
+                return DecodePcm16ChunkResult{
+                    DecodedPcm16Samples{kWindowFrames * kWindowCount * 2}
+                };
+            },
+            expectedDurationMs
+        );
+    };
+
+    for (const int64_t expectedDurationMs : {int64_t{0}, int64_t{32}}) {
+        const auto result = analyze(expectedDurationMs);
+        check(
+            result.status == WaveformCoreStatus::Success,
+            "single bound: analysis succeeds"
+        );
+        check(
+            result.levels.size() == 1,
+            "single bound: unknown or low duration stays within one sample"
+        );
+        if (result.levels.size() == 1) {
+            check(
+                nearlyEqual(result.levels.front(), std::sqrt(1.0f / 3.0f)),
+                "single bound: all decoded windows contribute by RMS"
+            );
+        }
+    }
+}
+
 void testLongInputRetainsAtMost1024StreamingBuckets() {
     constexpr size_t kWindowCount = 100'000;
     constexpr size_t kMaximumSamples = 1024;
@@ -325,6 +378,7 @@ int main() {
     testMagnitudeUsesTheLouderStereoChannel();
     testRmsWindowsIncludeSilenceAndTheFinalPartialWindow();
     testStreamingReductionUsesRms();
+    testSingleSampleBoundHandlesUnknownOrUnderreportedDuration();
     testLongInputRetainsAtMost1024StreamingBuckets();
     testIndependentTracksKeepAbsoluteAmplitude();
     testCancellationStopsBeforeAnotherDecodeChunk();

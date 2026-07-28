@@ -64,7 +64,8 @@ jboolean nativeAppendTrack(
     jfloat volume,
     jboolean muted,
     jfloat leftGain,
-    jfloat rightGain
+    jfloat rightGain,
+    jlong offsetMs
 ) {
     if (auto* engine = fromHandle(handle)) {
         return engine->appendTrack(
@@ -72,7 +73,8 @@ jboolean nativeAppendTrack(
             volume,
             muted == JNI_TRUE,
             leftGain,
-            rightGain
+            rightGain,
+            offsetMs
         ) ? JNI_TRUE : JNI_FALSE;
     }
     return JNI_FALSE;
@@ -441,7 +443,7 @@ void nativeReleaseWaveformAnalyzer(JNIEnv*, jobject, jlong handle) {
 JNINativeMethod kMethods[] = {
     {"nativeCreate", "()J", reinterpret_cast<void*>(nativeCreate)},
     {"nativeInitializeTracks", "(J[I[JI)Z", reinterpret_cast<void*>(nativeInitializeTracks)},
-    {"nativeAppendTrack", "(JIFZFF)Z", reinterpret_cast<void*>(nativeAppendTrack)},
+    {"nativeAppendTrack", "(JIFZFFJ)Z", reinterpret_cast<void*>(nativeAppendTrack)},
     {"nativePlay", "(J)Z", reinterpret_cast<void*>(nativePlay)},
     {"nativeIsPlaying", "(J)Z", reinterpret_cast<void*>(nativeIsPlaying)},
     {"nativePause", "(J)V", reinterpret_cast<void*>(nativePause)},

@@ -8,6 +8,10 @@ struct TrackReadWindow {
     int sourceFrames;
 };
 
+inline int64_t trackSourceFrame(int64_t timelineFrame, int64_t offsetFrames) {
+    return std::max<int64_t>(0, timelineFrame + offsetFrames);
+}
+
 inline TrackReadWindow trackReadWindow(
     int64_t timelineFrame,
     int requestedFrames,
@@ -20,7 +24,7 @@ inline TrackReadWindow trackReadWindow(
         0,
         requestedFrames
     ));
-    const int64_t readableSourceStart = std::max<int64_t>(0, sourceStartFrame);
+    const int64_t readableSourceStart = trackSourceFrame(timelineFrame, offsetFrames);
     const int availableFrames = static_cast<int>(std::clamp<int64_t>(
         sourceFrameCount - readableSourceStart,
         0,

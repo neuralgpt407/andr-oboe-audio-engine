@@ -85,6 +85,23 @@ class DefaultMixerSessionNormalizationBehaviorTest {
     }
 
     @Test
+    fun progressiveAppendAppliesOffsetBeforePublishingTheTrack() = runBlocking {
+        val controller = FakeMixerController()
+        val session = DefaultMixerSession(controller)
+        val offsetTrack = denoised.copy(offsetMs = 275L)
+
+        assertEquals(
+            AudioResult.Success,
+            session.prepare(MixerRequest(tracks = listOf(original))),
+        )
+        assertEquals(AudioResult.Success, session.appendTrack(offsetTrack))
+
+        assertEquals(275L, controller.offsetObservedDuringAppend)
+        assertEquals(275L, session.state.value.tracks.getValue(denoised.id).offsetMs)
+        session.close()
+    }
+
+    @Test
     fun typedPreparationFailureDoesNotPublishPartiallyPreparedTracks() = runBlocking {
         val failure = AudioFailure.NativeOperationFailed(
             operation = "decodeTrack",
@@ -157,6 +174,8 @@ class DefaultMixerSessionNormalizationBehaviorTest {
         private var prepared = false
         private var playbackRange: PlaybackRange? = null
         private val tracks = linkedMapOf<TrackId, MixerTrackState>()
+        var offsetObservedDuringAppend: Long? = null
+            private set
 
         override fun currentRoutedOutputDeviceId(): Int? = null
         override fun currentRoutedOutputDeviceType(deviceId: Int?): Int? = null
@@ -201,6 +220,7 @@ class DefaultMixerSessionNormalizationBehaviorTest {
             initialVolume: Float,
             muted: Boolean,
             initialChannelGain: ChannelGain,
+            initialOffsetMs: Long,
         ): MixerAppendResult {
             tracks[type] = MixerTrackState(
                 mix = TrackMix(
@@ -208,8 +228,9 @@ class DefaultMixerSessionNormalizationBehaviorTest {
                     muted = muted,
                     channelGain = initialChannelGain,
                 ),
-                offsetMs = 0L,
+                offsetMs = initialOffsetMs,
             )
+            offsetObservedDuringAppend = tracks.getValue(type).offsetMs
             return MixerAppendResult.Success
         }
 

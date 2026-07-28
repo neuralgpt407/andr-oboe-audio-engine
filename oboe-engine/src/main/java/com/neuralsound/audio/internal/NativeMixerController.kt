@@ -113,7 +113,7 @@ internal class NativeMixerController(
     private var tempoApplyJob: Job? = null
     private var routeMonitorJob: Job? = null
     private val engine = EngineHandle()
-    private val resourceLifecycleLock = Any()
+    private val resourceLifecycle = MixerResourceLifecycle()
     private val engineGeneration = AtomicLong(0L)
     private var durationMs: Long = 0L
     private var lastNativeTempoSpeed: Float = PlaybackEffects.DEFAULT_TEMPO
@@ -191,6 +191,9 @@ internal class NativeMixerController(
         initialVolumes: Map<TrackId, Float>,
         initialChannelGains: Map<TrackId, ChannelGain>,
     ): MixerPreparationResult {
+        if (resourceLifecycle.isClosed) {
+            return releasedPreparationResult()
+        }
         if (tracks.isEmpty()) {
             return MixerPreparationResult.Failure("no tracks were supplied")
         }
@@ -200,7 +203,7 @@ internal class NativeMixerController(
 
         val previous = lifecycleJob
         val preparation = scope.async {
-            runCatching { previous?.join() }
+            previous?.join()
             initializePlayersInternal(
                 tracks = tracks,
                 initialVolumes = initialVolumes,
@@ -217,7 +220,34 @@ internal class NativeMixerController(
         return preparation.await()
     }
 
-    private suspend fun initializePlayersInternal(
+    private fun initializePlayersInternal(
+        tracks: Map<TrackId, Uri>,
+        initialVolumes: Map<TrackId, Float>,
+        initialChannelGains: Map<TrackId, ChannelGain>,
+        autoPlay: Boolean,
+        startPositionMs: Long,
+        looping: Boolean,
+        effects: PlaybackEffects,
+        trackOffsetsMs: Map<TrackId, Long>,
+        forceSeek: Boolean,
+    ): MixerPreparationResult = resourceLifecycle.withOpen(
+        onClosed = ::releasedPreparationResult,
+    ) {
+        val result = initializePlayersWhileOpen(
+            tracks = tracks,
+            initialVolumes = initialVolumes,
+            initialChannelGains = initialChannelGains,
+            autoPlay = autoPlay,
+            startPositionMs = startPositionMs,
+            looping = looping,
+            effects = effects,
+            trackOffsetsMs = trackOffsetsMs,
+            forceSeek = forceSeek,
+        )
+        if (resourceLifecycle.isClosed) releasedPreparationResult() else result
+    }
+
+    private fun initializePlayersWhileOpen(
         tracks: Map<TrackId, Uri>,
         initialVolumes: Map<TrackId, Float>,
         initialChannelGains: Map<TrackId, ChannelGain>,
@@ -412,6 +442,7 @@ internal class NativeMixerController(
         initialVolume: Float,
         muted: Boolean,
         initialChannelGain: ChannelGain,
+        initialOffsetMs: Long,
     ): MixerAppendResult {
         if (!nativeLibraryAvailable || !engine.isActive || !isInitialized.get()) {
             return MixerAppendResult.Failure(AudioFailure.EngineInactive)
@@ -469,6 +500,7 @@ internal class NativeMixerController(
                     muted = muted,
                     leftGain = initialChannelGain.left,
                     rightGain = initialChannelGain.right,
+                    offsetMs = initialOffsetMs,
                 )
             }
             if (appended) {
@@ -480,6 +512,7 @@ internal class NativeMixerController(
                         initialVolume = initialVolume,
                         initialMuted = muted,
                         initialChannelGain = initialChannelGain,
+                        initialOffsetMs = initialOffsetMs,
                     )
                     decodedTrackFormats[type] = format
                 }
@@ -636,7 +669,9 @@ internal class NativeMixerController(
 
     override fun closeNow() {
         lifecycleJob?.cancel()
-        releaseResourcesImmediate()
+        resourceLifecycle.close {
+            releaseResourcesImmediate()
+        }
         scope.cancel()
     }
 
@@ -785,8 +820,8 @@ internal class NativeMixerController(
             failure = nativeFailure,
             tracks = failureContexts(),
         )
-        synchronized(resourceLifecycleLock) {
-            if (expectedGeneration != engineGeneration.get()) return
+        resourceLifecycle.withLock {
+            if (expectedGeneration != engineGeneration.get()) return@withLock
             pausePlayback()
             if (_runtimeFailure.compareAndSet(expect = null, update = failure)) {
                 releaseResourcesImmediate()
@@ -851,7 +886,7 @@ internal class NativeMixerController(
     }
 
     private fun releaseResourcesImmediate(resetPlaybackState: Boolean = true) {
-        synchronized(resourceLifecycleLock) {
+        resourceLifecycle.withLock {
             engineGeneration.incrementAndGet()
             isInitialized.set(false)
             isLooping = false
@@ -889,6 +924,11 @@ internal class NativeMixerController(
             }
         }
     }
+
+    private fun releasedPreparationResult() = MixerPreparationResult.Failure(
+        message = "mixer is released",
+        failure = AudioFailure.Released,
+    )
 
     private fun resetStates() {
         _isPlaying.value = false
@@ -1076,6 +1116,7 @@ internal class NativeMixerController(
         muted: Boolean,
         leftGain: Float,
         rightGain: Float,
+        offsetMs: Long,
     ): Boolean
     private external fun nativePlay(handle: Long): Boolean
     private external fun nativeIsPlaying(handle: Long): Boolean

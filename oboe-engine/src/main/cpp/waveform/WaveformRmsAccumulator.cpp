@@ -122,7 +122,14 @@ void WaveformRmsAccumulator::completeWindow(
 void WaveformRmsAccumulator::appendRmsLevel(float level) {
     const double bounded = static_cast<double>(boundedLevel(level));
     const double levelSquare = bounded * bounded;
-    if (expectedWindowCount_ > maxSamples_) {
+    if (maxSamples_ == 1) {
+        if (completedBuckets_.empty()) {
+            completedBuckets_.push_back({levelSquare, 1});
+        } else {
+            completedBuckets_.front().squareSum += levelSquare;
+            ++completedBuckets_.front().levelCount;
+        }
+    } else if (expectedWindowCount_ > maxSamples_) {
         const size_t bucket = std::min(
             maxSamples_ - 1,
             (completedWindowCount_ * maxSamples_) / expectedWindowCount_

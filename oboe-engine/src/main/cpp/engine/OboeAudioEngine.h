@@ -35,7 +35,14 @@ public:
     ~OboeAudioEngine() override;
 
     bool initialize(const int* fds, const int64_t* durations, int trackCount);
-    bool appendTrack(int fd, float volume, bool muted, float leftGain, float rightGain);
+    bool appendTrack(
+        int fd,
+        float volume,
+        bool muted,
+        float leftGain,
+        float rightGain,
+        int64_t offsetMs
+    );
     bool play();
     void pause();
     void stop();
@@ -82,7 +89,8 @@ private:
     bool tryJoinAppendedTrack(
         int index,
         NativeDecoderThread* thread,
-        int64_t chunkStartFrame,
+        int64_t timelineFrame,
+        int64_t targetSourceFrame,
         int requestedSamples
     );
     void maybeRescueStalledJoin(int index, int64_t chunkStartFrame);
@@ -135,7 +143,7 @@ private:
     std::atomic<int64_t> lastFailure_{
         NativeAudioFailureSnapshot{}.encode()
     };
-    int64_t durationMs_ = 0;
+    std::atomic<int64_t> durationMs_{0};
     int sampleRate_ = neuralsound::audio::DecodedAudioNormalizer::kOutputSampleRate;
     int trackCount_ = 0;
     // Source frame where the track's decoder delivers its next sample.
