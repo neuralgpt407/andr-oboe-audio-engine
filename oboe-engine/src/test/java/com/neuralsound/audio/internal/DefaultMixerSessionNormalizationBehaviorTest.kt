@@ -12,9 +12,13 @@ import com.neuralsound.audio.PlaybackEffects
 import com.neuralsound.audio.PlaybackRange
 import com.neuralsound.audio.TrackId
 import com.neuralsound.audio.TrackMix
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -160,8 +164,80 @@ class DefaultMixerSessionNormalizationBehaviorTest {
         session.close()
     }
 
+    @Test
+    fun closeDuringSuccessfulPrepareReturnsReleasedAndKeepsReleasedState() = runBlocking {
+        val prepareEntered = CompletableDeferred<Unit>()
+        val allowPrepareToFinish = CompletableDeferred<Unit>()
+        val controller = FakeMixerController(
+            beforePrepareResult = {
+                prepareEntered.complete(Unit)
+                allowPrepareToFinish.await()
+            },
+        )
+        val session = DefaultMixerSession(controller)
+        val result = async(start = CoroutineStart.UNDISPATCHED) {
+            session.prepare(MixerRequest(tracks = listOf(original)))
+        }
+
+        prepareEntered.await()
+        session.close()
+        allowPrepareToFinish.complete(Unit)
+
+        assertEquals(AudioResult.Failure(AudioFailure.Released), result.await())
+        assertEquals(MixerStatus.RELEASED, session.state.value.status)
+    }
+
+    @Test
+    fun closeDuringFailedPrepareReturnsReleasedAndKeepsReleasedState() = runBlocking {
+        val prepareEntered = CompletableDeferred<Unit>()
+        val allowPrepareToFinish = CompletableDeferred<Unit>()
+        val controller = FakeMixerController(
+            prepareResult = MixerPreparationResult.Failure("decoder failed"),
+            beforePrepareResult = {
+                prepareEntered.complete(Unit)
+                allowPrepareToFinish.await()
+            },
+        )
+        val session = DefaultMixerSession(controller)
+        val result = async(start = CoroutineStart.UNDISPATCHED) {
+            session.prepare(MixerRequest(tracks = listOf(original)))
+        }
+
+        prepareEntered.await()
+        session.close()
+        allowPrepareToFinish.complete(Unit)
+
+        assertEquals(AudioResult.Failure(AudioFailure.Released), result.await())
+        assertEquals(MixerStatus.RELEASED, session.state.value.status)
+    }
+
+    @Test
+    fun closeMapsControllerPreparationCancellationToReleased() = runBlocking {
+        val prepareEntered = CompletableDeferred<Unit>()
+        val allowCancellation = CompletableDeferred<Unit>()
+        val controller = FakeMixerController(
+            beforePrepareResult = {
+                prepareEntered.complete(Unit)
+                allowCancellation.await()
+                throw CancellationException("controller closed")
+            },
+        )
+        val session = DefaultMixerSession(controller)
+        val result = async(start = CoroutineStart.UNDISPATCHED) {
+            session.prepare(MixerRequest(tracks = listOf(original)))
+        }
+
+        prepareEntered.await()
+        session.close()
+        allowCancellation.complete(Unit)
+
+        assertEquals(AudioResult.Failure(AudioFailure.Released), result.await())
+        assertEquals(MixerStatus.RELEASED, session.state.value.status)
+    }
+
     private class FakeMixerController(
         private var prepareResult: MixerPreparationResult = MixerPreparationResult.Success,
+        private val beforePrepareResult: suspend () -> Unit = {},
     ) : MixerController {
         override val routeRevision: StateFlow<Long> = MutableStateFlow(0L)
         override val isPlaying: MutableStateFlow<Boolean> = MutableStateFlow(false)
@@ -194,6 +270,7 @@ class DefaultMixerSessionNormalizationBehaviorTest {
             initialVolumes: Map<TrackId, Float>,
             initialChannelGains: Map<TrackId, ChannelGain>,
         ): MixerPreparationResult {
+            beforePrepareResult()
             if (prepareResult != MixerPreparationResult.Success) {
                 prepared = false
                 return prepareResult

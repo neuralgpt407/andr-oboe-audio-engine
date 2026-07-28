@@ -14,14 +14,20 @@ class MixerResourceLifecycleTest {
         val lifecycle = MixerResourceLifecycle()
         val initializationEntered = CountDownLatch(1)
         val allowInitializationToFinish = CountDownLatch(1)
+        val initializationCompleted = AtomicBoolean(false)
+        val initializationRejected = AtomicBoolean(false)
         val releaseCalled = AtomicBoolean(false)
 
         val initialization = Thread {
             lifecycle.withOpen(
-                onClosed = { error("initialization unexpectedly rejected") },
+                onClosed = {
+                    initializationRejected.set(true)
+                },
             ) {
                 initializationEntered.countDown()
-                assertTrue(allowInitializationToFinish.await(2, TimeUnit.SECONDS))
+                initializationCompleted.set(
+                    allowInitializationToFinish.await(2, TimeUnit.SECONDS)
+                )
             }
         }
         initialization.start()
@@ -46,6 +52,8 @@ class MixerResourceLifecycleTest {
 
         assertFalse(initialization.isAlive)
         assertFalse(close.isAlive)
+        assertTrue(initializationCompleted.get())
+        assertFalse(initializationRejected.get())
         assertTrue(releaseCalled.get())
     }
 

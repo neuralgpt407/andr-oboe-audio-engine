@@ -13,6 +13,7 @@ import com.neuralsound.audio.PlaybackRange
 import com.neuralsound.audio.TrackId
 import com.neuralsound.audio.TrackMix
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -94,53 +95,74 @@ internal class DefaultMixerSession(
 
     override suspend fun prepare(request: MixerRequest): AudioResult {
         releasedFailure()?.let { return it }
-        _state.value = MixerState(
-            status = MixerStatus.PREPARING,
-            positionMs = request.startPositionMs,
-            playbackRange = request.playbackRange,
-            looping = request.looping,
-            effects = request.effects,
-            tracks = request.tracks.associate { track ->
-                track.id to com.neuralsound.audio.MixerTrackState(track.mix, track.offsetMs)
-            },
-        )
+        _state.update { current ->
+            if (closed.get() || current.status == MixerStatus.RELEASED) {
+                current
+            } else {
+                MixerState(
+                    status = MixerStatus.PREPARING,
+                    positionMs = request.startPositionMs,
+                    playbackRange = request.playbackRange,
+                    looping = request.looping,
+                    effects = request.effects,
+                    tracks = request.tracks.associate { track ->
+                        track.id to com.neuralsound.audio.MixerTrackState(track.mix, track.offsetMs)
+                    },
+                )
+            }
+        }
+        releasedFailure()?.let { return it }
         controller.setPlaybackRange(request.playbackRange)
 
         val tracks = linkedMapOf<TrackId, android.net.Uri>()
         request.tracks.forEach { tracks[it.id] = it.uri }
-        val result = controller.preparePlayers(
-            tracks = tracks,
-            startPositionMs = request.startPositionMs,
-            looping = request.looping,
-            effects = request.effects,
-            trackOffsetsMs = request.tracks.associate { it.id to it.offsetMs },
-            initialVolumes = request.tracks.associate { it.id to it.mix.volume },
-            initialChannelGains = request.tracks.associate { it.id to it.mix.channelGain },
-        )
+        val result = try {
+            controller.preparePlayers(
+                tracks = tracks,
+                startPositionMs = request.startPositionMs,
+                looping = request.looping,
+                effects = request.effects,
+                trackOffsetsMs = request.tracks.associate { it.id to it.offsetMs },
+                initialVolumes = request.tracks.associate { it.id to it.mix.volume },
+                initialChannelGains = request.tracks.associate { it.id to it.mix.channelGain },
+            )
+        } catch (cancellation: CancellationException) {
+            releasedFailure()?.let { return it }
+            throw cancellation
+        }
+        releasedFailure()?.let { return it }
         return when (result) {
             MixerPreparationResult.Success -> {
                 request.tracks.forEach { track ->
                     controller.setMuted(track.id, track.mix.muted)
                 }
-                _state.update {
-                    it.copy(
-                        status = MixerStatus.READY,
-                        durationMs = controller.totalDuration.value,
-                        playbackRange = controller.currentPlaybackRange(),
-                        tracks = controller.snapshotTracks(),
-                        route = currentRoute(),
-                        failure = null,
-                    )
+                _state.update { current ->
+                    if (closed.get() || current.status == MixerStatus.RELEASED) {
+                        current
+                    } else {
+                        current.copy(
+                            status = MixerStatus.READY,
+                            durationMs = controller.totalDuration.value,
+                            playbackRange = controller.currentPlaybackRange(),
+                            tracks = controller.snapshotTracks(),
+                            route = currentRoute(),
+                            failure = null,
+                        )
+                    }
                 }
+                releasedFailure()?.let { return it }
                 if (request.autoPlay) play() else AudioResult.Success
             }
 
-            is MixerPreparationResult.Failure -> fail(
-                result.failure ?: AudioFailure.NativeOperationFailed(
-                    operation = "prepare",
-                    detail = result.message,
+            is MixerPreparationResult.Failure -> {
+                releasedFailure()?.let { return it }
+                fail(
+                    result.failure ?: AudioFailure.NativeOperationFailed(
+                        operation = "prepare",
+                        detail = result.message,
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -237,9 +259,9 @@ internal class DefaultMixerSession(
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        _state.update { it.copy(status = MixerStatus.RELEASED) }
         scope.cancel()
         controller.closeNow()
-        _state.value = _state.value.copy(status = MixerStatus.RELEASED)
     }
 
     private fun publishRuntimeState() {
@@ -277,18 +299,22 @@ internal class DefaultMixerSession(
     }
 
     private fun fail(failure: AudioFailure): AudioResult.Failure {
-        _state.update {
-            it.copy(
-                status = MixerStatus.FAILED,
-                positionMs = 0L,
-                durationMs = 0L,
-                playbackRange = null,
-                tracks = emptyMap(),
-                route = null,
-                failure = failure,
-            )
+        _state.update { current ->
+            if (closed.get() || current.status == MixerStatus.RELEASED) {
+                current
+            } else {
+                current.copy(
+                    status = MixerStatus.FAILED,
+                    positionMs = 0L,
+                    durationMs = 0L,
+                    playbackRange = null,
+                    tracks = emptyMap(),
+                    route = null,
+                    failure = failure,
+                )
+            }
         }
-        return AudioResult.Failure(failure)
+        return releasedFailure() ?: AudioResult.Failure(failure)
     }
 
     private fun MixerPlaybackResult.toAudioResult(): AudioResult {

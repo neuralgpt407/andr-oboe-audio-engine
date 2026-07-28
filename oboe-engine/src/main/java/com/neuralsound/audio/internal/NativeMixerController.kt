@@ -22,6 +22,7 @@ import com.neuralsound.audio.PlaybackEffects
 import com.neuralsound.audio.PlaybackRange
 import com.neuralsound.audio.TrackMix
 import com.neuralsound.audio.TrackId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -217,7 +218,15 @@ internal class NativeMixerController(
             )
         }
         lifecycleJob = preparation
-        return preparation.await()
+        return try {
+            preparation.await()
+        } catch (cancellation: CancellationException) {
+            if (resourceLifecycle.isClosed) {
+                releasedPreparationResult()
+            } else {
+                throw cancellation
+            }
+        }
     }
 
     private fun initializePlayersInternal(
@@ -668,10 +677,10 @@ internal class NativeMixerController(
     override fun isPrepared(): Boolean = isInitialized.get() && engine.isActive
 
     override fun closeNow() {
-        lifecycleJob?.cancel()
         resourceLifecycle.close {
             releaseResourcesImmediate()
         }
+        lifecycleJob?.cancel()
         scope.cancel()
     }
 
