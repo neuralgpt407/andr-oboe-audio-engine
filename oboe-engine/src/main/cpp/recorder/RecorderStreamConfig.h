@@ -7,7 +7,7 @@
 std::shared_ptr<oboe::AudioStream> openRecorderInputStream(
     oboe::SharingMode sharingMode,
     oboe::AudioStreamDataCallback* dataCallback,
-    oboe::AudioStreamErrorCallback* errorCallback,
+    std::shared_ptr<oboe::AudioStreamErrorCallback> errorCallback,
     const char* logTag
 );
 

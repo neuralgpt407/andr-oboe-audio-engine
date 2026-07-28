@@ -149,6 +149,36 @@ class RecorderWavWriterHostTest {
         assertTrue(run.output, run.output.contains("PASS: Recorder stale-callback"))
     }
 
+    @Test
+    fun recorderDisconnectStartHostContractPasses() {
+        val moduleDir = (File("oboe-engine").takeIf { it.exists() } ?: File(".")).canonicalFile
+        val outputDir = File(moduleDir, "build/recorderHostTest").also { it.mkdirs() }
+        val binary = File(outputDir, "RecorderDisconnectStartHostTest")
+        val testSource = File(moduleDir, "src/test/cpp/recorder/RecorderDisconnectStartHostTest.cpp")
+        val coordinatorSource =
+            File(moduleDir, "src/main/cpp/recorder/RecorderMicSessionCoordinator.cpp")
+        val failureStateSource = File(moduleDir, "src/main/cpp/recorder/RecorderFailureState.cpp")
+
+        val compile = runProcess(
+            listOf(
+                "c++",
+                "-std=c++17",
+                "-pthread",
+                testSource.absolutePath,
+                coordinatorSource.absolutePath,
+                failureStateSource.absolutePath,
+                "-o",
+                binary.absolutePath,
+            ),
+            moduleDir,
+        )
+        assertEquals(compile.output, 0, compile.exitCode)
+
+        val run = runProcess(listOf(binary.absolutePath), moduleDir)
+        assertEquals(run.output, 0, run.exitCode)
+        assertTrue(run.output, run.output.contains("PASS: Recorder disconnect/start"))
+    }
+
     private fun runProcess(command: List<String>, workingDir: File): ProcessResult {
         val process = ProcessBuilder(command)
             .directory(workingDir)

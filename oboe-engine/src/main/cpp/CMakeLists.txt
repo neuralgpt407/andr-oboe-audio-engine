@@ -16,6 +16,8 @@ add_library(neuralsound_audio_engine SHARED
     waveform/WaveformRmsAccumulator.cpp
     recorder/OboeRecorderEngine.cpp
     recorder/OboeRecorderEngineWriter.cpp
+    recorder/RecorderErrorCallback.cpp
+    recorder/RecorderMicSessionCoordinator.cpp
     recorder/Pcm16WavHeader.cpp
     recorder/Pcm16WavWriter.cpp
     recorder/RecorderCanonicalRatePolicy.cpp

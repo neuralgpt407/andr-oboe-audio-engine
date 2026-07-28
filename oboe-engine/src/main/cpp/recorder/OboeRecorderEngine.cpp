@@ -1,5 +1,6 @@
 #include "OboeRecorderEngine.h"
 #include "RecorderCanonicalRatePolicy.h"
+#include "RecorderErrorCallback.h"
 #include "RecorderSampleConverter.h"
 #include "RecorderStreamConfig.h"
 
@@ -12,6 +13,14 @@ constexpr const char* kTag = "OboeRecorderEngine";
 constexpr int kMicStartTimeoutMs = 250;
 }
 
+OboeRecorderEngine::OboeRecorderEngine()
+    : failureState_(std::make_shared<RecorderFailureState>()),
+      callbackFence_(std::make_shared<RecorderCallbackFence>()),
+      micSessionCoordinator_(std::make_shared<RecorderMicSessionCoordinator>(
+          failureState_,
+          callbackFence_
+      )) {}
+
 OboeRecorderEngine::~OboeRecorderEngine() {
     releaseMicSession();
 }
@@ -22,16 +31,25 @@ bool OboeRecorderEngine::startMicSession() {
 }
 
 bool OboeRecorderEngine::startMicSessionLocked() {
-    if (micSessionActive_.load(std::memory_order_acquire)) {
+    if (micSessionCoordinator_->isActive()) {
         return true;
     }
 
-    failureState_.reset();
+    closeInputStream();
+    errorCallback_.reset();
+    failureState_->reset();
     peak_.store(0.0f, std::memory_order_release);
     ringBuffer_.clear();
 
-    if (!openInputStream(oboe::SharingMode::Exclusive) &&
-        !openInputStream(oboe::SharingMode::Shared)) {
+    auto sessionToken = micSessionCoordinator_->beginOpening();
+    bool streamOpened = openInputStream(oboe::SharingMode::Exclusive, sessionToken);
+    if (!streamOpened) {
+        micSessionCoordinator_->abandonOpening(sessionToken);
+        sessionToken = micSessionCoordinator_->beginOpening();
+        streamOpened = openInputStream(oboe::SharingMode::Shared, sessionToken);
+    }
+    if (!streamOpened) {
+        micSessionCoordinator_->abandonOpening(sessionToken);
         failActiveTake(
             "unable to open recorder input stream",
             OboeRecorderErrorCode::MicSessionOpenFailed
@@ -57,6 +75,7 @@ bool OboeRecorderEngine::startMicSessionLocked() {
             oboe::convertToText(startResult)
         );
         closeInputStream();
+        micSessionCoordinator_->abandonOpening(sessionToken);
         failActiveTake(
             "unable to start recorder input stream",
             OboeRecorderErrorCode::MicSessionOpenFailed
@@ -66,6 +85,7 @@ bool OboeRecorderEngine::startMicSessionLocked() {
 
     if (recorderStreamClosedDuringStart(stream, kMicStartTimeoutMs)) {
         closeInputStream();
+        micSessionCoordinator_->abandonOpening(sessionToken);
         failActiveTake(
             "recorder input stream closed during start",
             OboeRecorderErrorCode::MicSessionOpenFailed
@@ -73,7 +93,14 @@ bool OboeRecorderEngine::startMicSessionLocked() {
         return false;
     }
 
-    micSessionActive_.store(true, std::memory_order_release);
+    if (!micSessionCoordinator_->activate(sessionToken)) {
+        closeInputStream();
+        failActiveTake(
+            "recorder input stream closed during start",
+            OboeRecorderErrorCode::MicSessionOpenFailed
+        );
+        return false;
+    }
     return true;
 }
 
@@ -103,11 +130,11 @@ int OboeRecorderEngine::getSampleRate() const {
 }
 
 bool OboeRecorderEngine::hasFailed() const {
-    return failureState_.hasFailed();
+    return failureState_->hasFailed();
 }
 
 OboeRecorderFailureSnapshot OboeRecorderEngine::getFailureSnapshot() const {
-    return failureState_.snapshot();
+    return failureState_->snapshot();
 }
 
 oboe::DataCallbackResult OboeRecorderEngine::onAudioReady(
@@ -173,20 +200,20 @@ oboe::DataCallbackResult OboeRecorderEngine::onAudioReady(
         }
 
         if (writeFrames > 0) {
-            const uint64_t armedEpoch = callbackFence_.epoch();
-            if (armedEpoch != 0 && callbackFence_.tryEnter(armedEpoch)) {
-                if (!failureState_.hasFailed()) {
+            const uint64_t armedEpoch = callbackFence_->epoch();
+            if (armedEpoch != 0 && callbackFence_->tryEnter(armedEpoch)) {
+                if (!failureState_->hasFailed()) {
                     const size_t frameCount = static_cast<size_t>(writeFrames);
                     if (ringBuffer_.writeAllOrNothing(writeBuffer, frameCount)) {
                         acceptedFrames_.fetch_add(writeFrames, std::memory_order_release);
                         waveformAccumulator_.appendPcm16Mono(writeBuffer, writeFrames);
                     } else {
-                        failureState_.publishRealtimeOverflow();
-                        callbackFence_.disarm();
+                        failureState_->publishRealtimeOverflow();
+                        callbackFence_->disarm();
                     }
                 }
-                callbackFence_.leave();
-                if (failureState_.hasFailed()) {
+                callbackFence_->leave();
+                if (failureState_->hasFailed()) {
                     break;
                 }
             }
@@ -201,21 +228,23 @@ oboe::DataCallbackResult OboeRecorderEngine::onAudioReady(
 }
 
 void OboeRecorderEngine::disarmAndAwaitProducers() {
-    callbackFence_.disarmAndAwait();
+    callbackFence_->disarmAndAwait();
 }
 
-void OboeRecorderEngine::onErrorAfterClose(oboe::AudioStream*, oboe::Result error) {
-    if (error == oboe::Result::ErrorDisconnected) {
-        failActiveTake(
-            "recorder input stream disconnected",
-            OboeRecorderErrorCode::StreamDisconnected
-        );
-    }
-    micSessionActive_.store(false, std::memory_order_release);
-}
-
-bool OboeRecorderEngine::openInputStream(oboe::SharingMode sharingMode) {
-    auto stream = openRecorderInputStream(sharingMode, this, this, kTag);
+bool OboeRecorderEngine::openInputStream(
+    oboe::SharingMode sharingMode,
+    RecorderMicSessionCoordinator::SessionToken sessionToken
+) {
+    auto errorCallback = std::make_shared<RecorderErrorCallback>(
+        micSessionCoordinator_,
+        sessionToken
+    );
+    auto stream = openRecorderInputStream(
+        sharingMode,
+        this,
+        errorCallback,
+        kTag
+    );
     if (stream == nullptr) {
         return false;
     }
@@ -226,6 +255,7 @@ bool OboeRecorderEngine::openInputStream(oboe::SharingMode sharingMode) {
         return false;
     }
     setStream(std::move(stream));
+    errorCallback_ = std::move(errorCallback);
     return true;
 }
 
@@ -305,6 +335,6 @@ void OboeRecorderEngine::failActiveTake(
     const std::string& message,
     OboeRecorderErrorCode errorCode
 ) {
-    callbackFence_.disarm();
-    failureState_.publish(errorCode, message);
+    callbackFence_->disarm();
+    failureState_->publish(errorCode, message);
 }

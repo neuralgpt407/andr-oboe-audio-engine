@@ -4,11 +4,12 @@
 
 #include <chrono>
 #include <thread>
+#include <utility>
 
 std::shared_ptr<oboe::AudioStream> openRecorderInputStream(
     oboe::SharingMode sharingMode,
     oboe::AudioStreamDataCallback* dataCallback,
-    oboe::AudioStreamErrorCallback* errorCallback,
+    std::shared_ptr<oboe::AudioStreamErrorCallback> errorCallback,
     const char* logTag
 ) {
     // Open at the device's native sample rate (Unspecified). Any conversion to
@@ -23,7 +24,7 @@ std::shared_ptr<oboe::AudioStream> openRecorderInputStream(
         ->setSampleRate(oboe::kUnspecified)
         ->setInputPreset(oboe::InputPreset::VoicePerformance)
         ->setDataCallback(dataCallback)
-        ->setErrorCallback(errorCallback);
+        ->setErrorCallback(std::move(errorCallback));
 
     std::shared_ptr<oboe::AudioStream> stream;
     const oboe::Result result = builder.openStream(stream);

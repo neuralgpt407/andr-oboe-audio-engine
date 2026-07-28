@@ -43,7 +43,7 @@ bool OboeRecorderEngine::startWritingLocked(
         );
     if (invalidRequest) {
         if (!writerRunning_.load(std::memory_order_acquire)) {
-            failureState_.reset();
+            failureState_->reset();
         }
         failActiveTake(
             "invalid recorder output request",
@@ -54,9 +54,15 @@ bool OboeRecorderEngine::startWritingLocked(
     if (!startMicSessionLocked()) {
         return false;
     }
+    const auto sessionToken = micSessionCoordinator_->activeToken();
+    if (sessionToken == RecorderMicSessionCoordinator::kNoSession) {
+        return false;
+    }
 
     pauseWritingLocked();
-    failureState_.reset();
+    if (!micSessionCoordinator_->resetFailureForTake(sessionToken)) {
+        return false;
+    }
     ringBuffer_.clear();
     framesWritten_.store(0, std::memory_order_release);
     acceptedFrames_.store(0, std::memory_order_release);
@@ -73,6 +79,7 @@ bool OboeRecorderEngine::startWritingLocked(
             outputPath,
             startOffset,
             startOffsetUnit,
+            sessionToken,
             promise = std::move(startPromise)
         ]() mutable {
             Pcm16WavWriter writer;
@@ -81,7 +88,7 @@ bool OboeRecorderEngine::startWritingLocked(
                 ? writer.openAtFrame(outputPath, rate, 1, startOffset)
                 : writer.open(outputPath, rate, 1, startOffset);
             if (!opened) {
-                failureState_.publish(
+                failureState_->publish(
                     OboeRecorderErrorCode::WriterFileError,
                     writer.lastError()
                 );
@@ -90,7 +97,12 @@ bool OboeRecorderEngine::startWritingLocked(
                 return;
             }
 
-            callbackFence_.arm();
+            if (!micSessionCoordinator_->armTakeIfActive(sessionToken)) {
+                writer.close();
+                writerRunning_.store(false, std::memory_order_release);
+                promise.set_value(false);
+                return;
+            }
             promise.set_value(true);
             runWriterLoop(writer);
         }
@@ -110,18 +122,18 @@ void OboeRecorderEngine::runWriterLoop(Pcm16WavWriter& writer) {
         const size_t read = ringBuffer_.read(writerBuffer_.data(), writerBuffer_.size());
         if (read > 0) {
             if (!writer.write(writerBuffer_.data(), read)) {
-                failureState_.publish(
+                failureState_->publish(
                     OboeRecorderErrorCode::WriterFileError,
                     writer.lastError()
                 );
-                callbackFence_.disarm();
+                callbackFence_->disarm();
                 break;
             }
             framesWritten_.store(writer.framesWritten(), std::memory_order_release);
             continue;
         }
 
-        if (failureState_.hasFailed()) {
+        if (failureState_->hasFailed()) {
             writerStopRequested_.store(true, std::memory_order_release);
         }
         if (writerStopRequested_.load(std::memory_order_acquire) &&
@@ -132,9 +144,9 @@ void OboeRecorderEngine::runWriterLoop(Pcm16WavWriter& writer) {
         std::this_thread::sleep_for(std::chrono::milliseconds(kWriterIdleSleepMs));
     }
 
-    callbackFence_.disarm();
+    callbackFence_->disarm();
     if (!writer.close()) {
-        failureState_.publish(
+        failureState_->publish(
             OboeRecorderErrorCode::WriterFileError,
             writer.lastError()
         );
@@ -163,10 +175,10 @@ OboeRecordingResult OboeRecorderEngine::stopWriting() {
     const int rate = sampleRate_.load(std::memory_order_acquire);
     const int64_t accepted = acceptedFrames_.load(std::memory_order_acquire);
     const int64_t written = framesWritten_.load(std::memory_order_acquire);
-    const bool nativeFailed = failureState_.hasFailed();
+    const bool nativeFailed = failureState_->hasFailed();
     const bool failed = nativeFailed || accepted != written;
     if (accepted != written && !nativeFailed) {
-        failureState_.publish(
+        failureState_->publish(
             OboeRecorderErrorCode::WriterFileError,
             "recorder accepted/written frame mismatch"
         );
@@ -183,6 +195,7 @@ OboeRecordingResult OboeRecorderEngine::stopWriting() {
 void OboeRecorderEngine::releaseMicSession() {
     std::lock_guard<std::mutex> operationLock(operationMutex_);
     pauseWritingLocked();
+    micSessionCoordinator_->release();
     closeInputStream();
-    micSessionActive_.store(false, std::memory_order_release);
+    errorCallback_.reset();
 }
