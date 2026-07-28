@@ -10,6 +10,7 @@ import com.neuralsound.audio.AudioRoute
 import com.neuralsound.audio.ChannelGain
 import com.neuralsound.audio.FrameRecordingRequest
 import com.neuralsound.audio.MixerRequest
+import com.neuralsound.audio.MixerSession
 import com.neuralsound.audio.MixerState
 import com.neuralsound.audio.MixerStatus
 import com.neuralsound.audio.MixerTrack
@@ -22,6 +23,7 @@ import com.neuralsound.audio.PlaybackRange
 import com.neuralsound.audio.RecorderError
 import com.neuralsound.audio.RecorderFailure
 import com.neuralsound.audio.RecorderOperationResult
+import com.neuralsound.audio.RecorderSession
 import com.neuralsound.audio.RecorderState
 import com.neuralsound.audio.RecorderStatus
 import com.neuralsound.audio.RecorderTelemetry
@@ -35,6 +37,8 @@ import com.neuralsound.audio.media3.Media3VideoState
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -124,24 +128,37 @@ class KotlinApiCompatibilityTest {
         assertEquals(10L, telemetry.writtenFrames)
         assertEquals(request, media3Request.audio)
         assertTrue(videoState.firstFrameReady)
-        assertEquals(
-            AudioFailure.NativeOperationFailed(operation = "legacy", detail = "detail"),
-            AudioFailure.NativeOperationFailed(operation = "legacy", detail = "detail"),
+        val nativeFailure = AudioFailure.NativeOperationFailed(
+            operation = "legacy",
+            detail = "detail",
         )
-        assertEquals(
-            AudioFailure.UnsupportedTrackFormat(
-                trackId = trackId,
-                sampleRate = 48_000,
-                channelCount = 2,
-                requiredSampleRate = 44_100,
-            ),
-            AudioFailure.UnsupportedTrackFormat(
-                trackId = trackId,
-                sampleRate = 48_000,
-                channelCount = 2,
-                requiredSampleRate = 44_100,
-            ),
+        assertEquals("legacy", nativeFailure.operation)
+        assertEquals("detail", nativeFailure.detail)
+        val unsupportedFormat = AudioFailure.UnsupportedTrackFormat(
+            trackId = trackId,
+            sampleRate = 48_000,
+            channelCount = 2,
+            requiredSampleRate = 44_100,
         )
+        assertEquals(trackId, unsupportedFormat.trackId)
+        assertEquals(44_100, unsupportedFormat.requiredSampleRate)
+
+        val audioEngine = AudioEngine(context = context)
+        val mixerSession: MixerSession = audioEngine.createMixerSession()
+        assertEquals(AudioResult.Success, mixerSession.setPlaybackRange(range = range))
+        assertEquals(AudioResult.Success, mixerSession.setLooping(looping = true))
+        assertEquals(AudioResult.Success, mixerSession.setEffects(effects = effects))
+        assertEquals(
+            AudioResult.Failure(AudioFailure.NotPrepared),
+            mixerSession.seekTo(positionMs = 20L),
+        )
+        mixerSession.close()
+
+        val recorderSession: RecorderSession = audioEngine.createRecorderSession()
+        val namedStart = recorderSession.startWriting(request = recordingRequest)
+        assertFalse(namedStart.isSuccess)
+        assertNull(recorderSession.telemetry(afterBucketIndex = 0))
+        recorderSession.close()
     }
 
     @Test
@@ -160,16 +177,14 @@ class KotlinApiCompatibilityTest {
             recordingStart.error == RecorderError.InvalidState ||
                 recordingStart.error == RecorderError.NativeUnavailable
         )
-        assertEquals(
-            RecorderState(
-                status = RecorderStatus.FAILED,
-                currentFailure = RecorderFailure(
-                    error = RecorderError.NativeUnavailable,
-                    message = "unavailable",
-                ),
-            ).status,
-            RecorderStatus.FAILED,
+        val failedState = RecorderState(
+            status = RecorderStatus.FAILED,
+            currentFailure = RecorderFailure(
+                error = RecorderError.NativeUnavailable,
+                message = "unavailable",
+            ),
         )
+        assertEquals(RecorderError.NativeUnavailable, failedState.currentFailure?.error)
         recorder.close()
 
         val source = File(context.cacheDir, "v02-waveform-empty.bin").apply {

@@ -15,6 +15,7 @@ import com.neuralsound.audio.PlaybackEffects
 import com.neuralsound.audio.TrackId
 import com.neuralsound.audio.media3.internal.Media3PlayerFactories
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -95,8 +96,9 @@ class Media3MixerSessionLifecycleTest {
 
         val first = async { session.prepare(request()) }
         firstPrepareEntered.await()
-        val second = async { session.prepare(request()) }
-        delay(50)
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            session.prepare(request())
+        }
 
         assertEquals(1, mixer.prepareCalls)
         allowFirstPrepareToFinish.complete(Unit)

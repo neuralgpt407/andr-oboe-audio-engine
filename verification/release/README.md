@@ -17,10 +17,11 @@ candidate_repository="$(mktemp -d)"
   -PVERSION_NAME=v0.2.0
 ```
 
-Download the immutable `v0.1.0` AARs as the binary-compatibility baseline, then
-verify POM and Gradle metadata, sources, notices, the supported Kotlin/JVM
-surface, packaged ABIs, minimal runtime exports, and matching native-symbol
-Build IDs:
+Download the immutable `v0.1.0` AARs as the binary-compatibility baseline. The
+verifier pins their SHA-256 digests, rejects mutable POM or Gradle metadata,
+compares the exact approved additive Kotlin/JVM surface and root class set,
+checks the exact runtime and symbol-classifier entries, and validates Build IDs
+plus usable debug sections for every native library in both ABIs:
 
 ```shell
 baseline_directory="$(mktemp -d)"
@@ -30,6 +31,13 @@ curl -fsSL \
 curl -fsSL \
   https://jitpack.io/com/github/neuralgpt407/andr-oboe-audio-engine/oboe-media3/v0.1.0/oboe-media3-v0.1.0.aar \
   -o "$baseline_directory/oboe-media3-v0.1.0.aar"
+
+printf '%s  %s\n' \
+  22c3d516b3ac0cfca1c540244fb6f3d179014887dad9ae548640ee6d4422a1ab \
+  "$baseline_directory/oboe-engine-v0.1.0.aar" \
+  21000548f55c275662e1eb85d7b9185dc3b2acc0daf5a05aeee4f465a379eb47 \
+  "$baseline_directory/oboe-media3-v0.1.0.aar" |
+  shasum -a 256 -c
 
 verification/release/verify-local-publication.sh \
   "$candidate_repository" \

@@ -1,0 +1,2 @@
+  public final com.neuralsound.audio.FramePreciseRecorderSession createFramePreciseRecorderSession();
+    descriptor: ()Lcom/neuralsound/audio/FramePreciseRecorderSession;

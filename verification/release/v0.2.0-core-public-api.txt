@@ -1,0 +1,148 @@
+public interface com.neuralsound.audio.FramePreciseRecorderSession extends com.neuralsound.audio.RecorderSession {
+  public abstract kotlinx.coroutines.flow.StateFlow<com.neuralsound.audio.RecorderState> getState();
+    descriptor: ()Lkotlinx/coroutines/flow/StateFlow;
+  public abstract kotlinx.coroutines.flow.StateFlow<com.neuralsound.audio.RecorderFailure> getCurrentFailure();
+    descriptor: ()Lkotlinx/coroutines/flow/StateFlow;
+  public abstract com.neuralsound.audio.RecorderOperationResult startWriting(com.neuralsound.audio.FrameRecordingRequest);
+    descriptor: (Lcom/neuralsound/audio/FrameRecordingRequest;)Lcom/neuralsound/audio/RecorderOperationResult;
+}
+public final class com.neuralsound.audio.FrameRecordingRequest {
+  public com.neuralsound.audio.FrameRecordingRequest(java.io.File, long);
+    descriptor: (Ljava/io/File;J)V
+  public com.neuralsound.audio.FrameRecordingRequest(java.io.File, long, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Ljava/io/File;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final java.io.File getOutputFile();
+    descriptor: ()Ljava/io/File;
+  public final long getStartOffsetFrames();
+    descriptor: ()J
+  public final java.io.File component1();
+    descriptor: ()Ljava/io/File;
+  public final long component2();
+    descriptor: ()J
+  public final com.neuralsound.audio.FrameRecordingRequest copy(java.io.File, long);
+    descriptor: (Ljava/io/File;J)Lcom/neuralsound/audio/FrameRecordingRequest;
+  public static com.neuralsound.audio.FrameRecordingRequest copy$default(com.neuralsound.audio.FrameRecordingRequest, java.io.File, long, int, java.lang.Object);
+    descriptor: (Lcom/neuralsound/audio/FrameRecordingRequest;Ljava/io/File;JILjava/lang/Object;)Lcom/neuralsound/audio/FrameRecordingRequest;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+}
+public final class com.neuralsound.audio.NativeAudioWaveformAnalyzer {
+  public static final com.neuralsound.audio.NativeAudioWaveformAnalyzer$Companion Companion;
+    descriptor: Lcom/neuralsound/audio/NativeAudioWaveformAnalyzer$Companion;
+  public static final int ALGORITHM_VERSION;
+    descriptor: I
+  public static final int MAX_OUTPUT_SAMPLES;
+    descriptor: I
+  public com.neuralsound.audio.NativeAudioWaveformAnalyzer();
+    descriptor: ()V
+  public final java.lang.Object analyze(android.os.ParcelFileDescriptor, int, kotlin.coroutines.Continuation<? super com.neuralsound.audio.NativeWaveformAnalysisResult>);
+    descriptor: (Landroid/os/ParcelFileDescriptor;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+  public static java.lang.Object analyze$default(com.neuralsound.audio.NativeAudioWaveformAnalyzer, android.os.ParcelFileDescriptor, int, kotlin.coroutines.Continuation, int, java.lang.Object);
+    descriptor: (Lcom/neuralsound/audio/NativeAudioWaveformAnalyzer;Landroid/os/ParcelFileDescriptor;ILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+  public final void cancel();
+    descriptor: ()V
+}
+public final class com.neuralsound.audio.NativeAudioWaveformAnalyzer$Companion {
+  public com.neuralsound.audio.NativeAudioWaveformAnalyzer$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+public final class com.neuralsound.audio.NativeWaveformAnalysisError extends java.lang.Enum<com.neuralsound.audio.NativeWaveformAnalysisError> {
+  public static final com.neuralsound.audio.NativeWaveformAnalysisError Unreadable;
+    descriptor: Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public static final com.neuralsound.audio.NativeWaveformAnalysisError Unsupported;
+    descriptor: Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public static final com.neuralsound.audio.NativeWaveformAnalysisError Corrupt;
+    descriptor: Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public static final com.neuralsound.audio.NativeWaveformAnalysisError EmptyMedia;
+    descriptor: Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public static final com.neuralsound.audio.NativeWaveformAnalysisError Cancelled;
+    descriptor: Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public static final com.neuralsound.audio.NativeWaveformAnalysisError InvalidArgument;
+    descriptor: Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public static final com.neuralsound.audio.NativeWaveformAnalysisError NativeUnavailable;
+    descriptor: Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public static com.neuralsound.audio.NativeWaveformAnalysisError[] values();
+    descriptor: ()[Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public static com.neuralsound.audio.NativeWaveformAnalysisError valueOf(java.lang.String);
+    descriptor: (Ljava/lang/String;)Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public static kotlin.enums.EnumEntries<com.neuralsound.audio.NativeWaveformAnalysisError> getEntries();
+    descriptor: ()Lkotlin/enums/EnumEntries;
+}
+public interface com.neuralsound.audio.NativeWaveformAnalysisResult {
+}
+public final class com.neuralsound.audio.NativeWaveformAnalysisResult$Failure implements com.neuralsound.audio.NativeWaveformAnalysisResult {
+  public com.neuralsound.audio.NativeWaveformAnalysisResult$Failure(com.neuralsound.audio.NativeWaveformAnalysisError);
+    descriptor: (Lcom/neuralsound/audio/NativeWaveformAnalysisError;)V
+  public final com.neuralsound.audio.NativeWaveformAnalysisError getError();
+    descriptor: ()Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public final com.neuralsound.audio.NativeWaveformAnalysisError component1();
+    descriptor: ()Lcom/neuralsound/audio/NativeWaveformAnalysisError;
+  public final com.neuralsound.audio.NativeWaveformAnalysisResult$Failure copy(com.neuralsound.audio.NativeWaveformAnalysisError);
+    descriptor: (Lcom/neuralsound/audio/NativeWaveformAnalysisError;)Lcom/neuralsound/audio/NativeWaveformAnalysisResult$Failure;
+  public static com.neuralsound.audio.NativeWaveformAnalysisResult$Failure copy$default(com.neuralsound.audio.NativeWaveformAnalysisResult$Failure, com.neuralsound.audio.NativeWaveformAnalysisError, int, java.lang.Object);
+    descriptor: (Lcom/neuralsound/audio/NativeWaveformAnalysisResult$Failure;Lcom/neuralsound/audio/NativeWaveformAnalysisError;ILjava/lang/Object;)Lcom/neuralsound/audio/NativeWaveformAnalysisResult$Failure;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+}
+public final class com.neuralsound.audio.NativeWaveformAnalysisResult$Success implements com.neuralsound.audio.NativeWaveformAnalysisResult {
+  public com.neuralsound.audio.NativeWaveformAnalysisResult$Success(float[]);
+    descriptor: ([F)V
+  public final float[] getLevels();
+    descriptor: ()[F
+}
+public final class com.neuralsound.audio.RecorderFailure {
+  public com.neuralsound.audio.RecorderFailure(com.neuralsound.audio.RecorderError, java.lang.String);
+    descriptor: (Lcom/neuralsound/audio/RecorderError;Ljava/lang/String;)V
+  public com.neuralsound.audio.RecorderFailure(com.neuralsound.audio.RecorderError, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Lcom/neuralsound/audio/RecorderError;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final com.neuralsound.audio.RecorderError getError();
+    descriptor: ()Lcom/neuralsound/audio/RecorderError;
+  public final java.lang.String getMessage();
+    descriptor: ()Ljava/lang/String;
+  public final com.neuralsound.audio.RecorderError component1();
+    descriptor: ()Lcom/neuralsound/audio/RecorderError;
+  public final java.lang.String component2();
+    descriptor: ()Ljava/lang/String;
+  public final com.neuralsound.audio.RecorderFailure copy(com.neuralsound.audio.RecorderError, java.lang.String);
+    descriptor: (Lcom/neuralsound/audio/RecorderError;Ljava/lang/String;)Lcom/neuralsound/audio/RecorderFailure;
+  public static com.neuralsound.audio.RecorderFailure copy$default(com.neuralsound.audio.RecorderFailure, com.neuralsound.audio.RecorderError, java.lang.String, int, java.lang.Object);
+    descriptor: (Lcom/neuralsound/audio/RecorderFailure;Lcom/neuralsound/audio/RecorderError;Ljava/lang/String;ILjava/lang/Object;)Lcom/neuralsound/audio/RecorderFailure;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+}
+public final class com.neuralsound.audio.RecorderState {
+  public com.neuralsound.audio.RecorderState(com.neuralsound.audio.RecorderStatus, com.neuralsound.audio.RecorderFailure);
+    descriptor: (Lcom/neuralsound/audio/RecorderStatus;Lcom/neuralsound/audio/RecorderFailure;)V
+  public com.neuralsound.audio.RecorderState(com.neuralsound.audio.RecorderStatus, com.neuralsound.audio.RecorderFailure, int, kotlin.jvm.internal.DefaultConstructorMarker);
+    descriptor: (Lcom/neuralsound/audio/RecorderStatus;Lcom/neuralsound/audio/RecorderFailure;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+  public final com.neuralsound.audio.RecorderStatus getStatus();
+    descriptor: ()Lcom/neuralsound/audio/RecorderStatus;
+  public final com.neuralsound.audio.RecorderFailure getCurrentFailure();
+    descriptor: ()Lcom/neuralsound/audio/RecorderFailure;
+  public final com.neuralsound.audio.RecorderStatus component1();
+    descriptor: ()Lcom/neuralsound/audio/RecorderStatus;
+  public final com.neuralsound.audio.RecorderFailure component2();
+    descriptor: ()Lcom/neuralsound/audio/RecorderFailure;
+  public final com.neuralsound.audio.RecorderState copy(com.neuralsound.audio.RecorderStatus, com.neuralsound.audio.RecorderFailure);
+    descriptor: (Lcom/neuralsound/audio/RecorderStatus;Lcom/neuralsound/audio/RecorderFailure;)Lcom/neuralsound/audio/RecorderState;
+  public static com.neuralsound.audio.RecorderState copy$default(com.neuralsound.audio.RecorderState, com.neuralsound.audio.RecorderStatus, com.neuralsound.audio.RecorderFailure, int, java.lang.Object);
+    descriptor: (Lcom/neuralsound/audio/RecorderState;Lcom/neuralsound/audio/RecorderStatus;Lcom/neuralsound/audio/RecorderFailure;ILjava/lang/Object;)Lcom/neuralsound/audio/RecorderState;
+  public java.lang.String toString();
+    descriptor: ()Ljava/lang/String;
+  public int hashCode();
+    descriptor: ()I
+  public boolean equals(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)Z
+}
