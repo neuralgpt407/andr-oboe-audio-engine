@@ -6,6 +6,7 @@ import com.neuralsound.audio.AudioResult
 import com.neuralsound.audio.TrackFailureReason
 import com.neuralsound.audio.TrackId
 import com.neuralsound.audio.internal.MixerAppendResult
+import com.neuralsound.audio.internal.MixerCompletion
 import com.neuralsound.audio.internal.MixerController
 import com.neuralsound.audio.internal.MixerPlaybackResult
 import com.neuralsound.audio.internal.MixerPreparationResult
@@ -28,6 +29,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.toList
@@ -331,6 +333,14 @@ class DefaultPlayerTest {
         override val tempoSpeed = MutableStateFlow(1f)
         override val pitchSemitones = MutableStateFlow(0)
         override val runtimeFailure = MutableStateFlow<AudioFailure?>(null)
+        override val completions = MutableSharedFlow<MixerCompletion>(extraBufferCapacity = 8)
+
+        /** Mirrors the native controller: playback stops at the end and completion is signalled. */
+        fun finishAt(positionMs: Long, completion: MixerCompletion) {
+            currentPosition.value = positionMs
+            isPlaying.value = false
+            completions.tryEmit(completion)
+        }
 
         val calls = mutableListOf<String>()
         var prepared = false

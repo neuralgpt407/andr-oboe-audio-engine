@@ -32,6 +32,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -151,6 +154,9 @@ internal class NativeMixerController(
 
     private val _runtimeFailure = MutableStateFlow<AudioFailure?>(null)
     override val runtimeFailure: StateFlow<AudioFailure?> = _runtimeFailure.asStateFlow()
+
+    private val _completions = MutableSharedFlow<MixerCompletion>(extraBufferCapacity = 8)
+    override val completions: Flow<MixerCompletion> = _completions.asSharedFlow()
 
     override fun currentRoutedOutputDeviceId(): Int? {
         val nativeDeviceId = engine.use(0) { handle -> nativeGetOutputDeviceId(handle) }
@@ -857,8 +863,9 @@ internal class NativeMixerController(
             seekToPosition(PlaybackRangePolicy.loopStart(activePlaybackRange))
         } else {
             pausePlayback()
-            val endMs = activePlaybackRange?.endMs ?: durationMs
-            _currentPosition.value = endMs
+            val range = activePlaybackRange
+            _currentPosition.value = range?.endMs ?: durationMs
+            _completions.tryEmit(if (range != null) MixerCompletion.END_OF_RANGE else MixerCompletion.END_OF_MEDIA)
         }
     }
 

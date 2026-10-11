@@ -6,12 +6,14 @@ import com.neuralsound.audio.AudioError
 import com.neuralsound.audio.AudioResult
 import com.neuralsound.audio.TrackId
 import com.neuralsound.audio.internal.MixerAppendResult
+import com.neuralsound.audio.internal.MixerCompletion
 import com.neuralsound.audio.internal.MixerController
 import com.neuralsound.audio.internal.MixerPlaybackFailureReason
 import com.neuralsound.audio.internal.MixerPlaybackResult
 import com.neuralsound.audio.internal.MixerPreparationResult
 import com.neuralsound.audio.internal.OutputRoutePolicy
 import com.neuralsound.audio.player.AudioRoute
+import com.neuralsound.audio.player.CompletionReason
 import com.neuralsound.audio.player.FocusPolicy
 import com.neuralsound.audio.player.PitchTempo
 import com.neuralsound.audio.player.PlaybackRange
@@ -334,6 +336,22 @@ internal class DefaultPlayer(
         }
         scope.launch {
             controller.runtimeFailure.collect { failure -> if (failure != null) fail(toPublic(failure)) }
+        }
+        scope.launch {
+            controller.completions.collect { completion ->
+                var ended = false
+                updateLive {
+                    ended = true
+                    it.copy(status = PlayerStatus.ENDED, positionMs = controller.currentPosition.value)
+                }
+                if (ended) {
+                    val reason = when (completion) {
+                        MixerCompletion.END_OF_MEDIA -> CompletionReason.END_OF_MEDIA
+                        MixerCompletion.END_OF_RANGE -> CompletionReason.END_OF_RANGE
+                    }
+                    _events.tryEmit(PlayerEvent.Completed(reason, controller.currentPosition.value))
+                }
+            }
         }
     }
 

@@ -42,11 +42,12 @@ internal object PlaybackRangePolicy {
         return positionMs >= range.endMs - COMPLETION_THRESHOLD_MS
     }
 
+    /** A playback range only bounds playback; it repeats only when looping is requested. */
     fun shouldLoopOnCompletion(
         activeRange: PlaybackRange?,
         explicitLooping: Boolean,
     ): Boolean {
-        return explicitLooping || activeRange != null
+        return explicitLooping
     }
 
     fun loopStart(activeRange: PlaybackRange?): Long {

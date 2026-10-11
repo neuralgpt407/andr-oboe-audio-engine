@@ -41,13 +41,23 @@ class PlaybackRangePolicyTest {
     }
 
     @Test
-    fun `completion loops when active range exists without explicit looping`() {
+    fun `completion stops at the range end without explicit looping`() {
         val range = PlaybackRange(2_000L, 8_000L)
 
-        assertTrue(
+        assertFalse(
             PlaybackRangePolicy.shouldLoopOnCompletion(
                 activeRange = range,
                 explicitLooping = false,
+            )
+        )
+    }
+
+    @Test
+    fun `completion loops the range when looping is requested`() {
+        assertTrue(
+            PlaybackRangePolicy.shouldLoopOnCompletion(
+                activeRange = PlaybackRange(2_000L, 8_000L),
+                explicitLooping = true,
             )
         )
     }
