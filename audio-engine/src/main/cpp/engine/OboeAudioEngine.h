@@ -4,6 +4,7 @@
 #include "OutputAttenuationRamp.h"
 #include "NativeDecoderThread.h"
 #include "PitchTempoProcessor.h"
+#include "RenderLifecycleCoordinator.h"
 #include "SourceBoost.h"
 #include "StereoLookaheadLimiter.h"
 #include "TrackReadOffset.h"
@@ -91,7 +92,12 @@ private:
     void setStream(std::shared_ptr<oboe::AudioStream> stream);
     bool reopenStream();
     void requestRestart();
-    void startRenderThread();
+    bool startRenderThread();
+    // Lifecycle (FEAT-0001 FR-14): play/pause/seek/restart/resync/append are serialized by
+    // renderLifecycle_; the *WithLifecycleLockHeld variants run inside an acquired guard.
+    bool playWithLifecycleLockHeld();
+    void pauseWithLifecycleLockHeld();
+    bool seekToWithLifecycleLockHeld(int64_t ms);
     void stopRenderThread();
     void renderLoop();
     int renderNextChunk(bool& allEnd);
@@ -109,7 +115,9 @@ private:
     int mixSourceFrames(float* outputInterleaved, int frames, bool& allEnd);
     void restartStream();
 
-    std::vector<std::unique_ptr<NativeDecoderThread>> decoderThreads_;
+    // Fixed slots published by a release-store of trackCount_, so the render thread can read
+    // them without taking trackMutex_.
+    std::array<std::unique_ptr<NativeDecoderThread>, kTrackCapacity> decoderThreads_{};
     // Guarded by streamMutex_; methods work on a shared_ptr copy from
     // getStream() so a concurrent reopen can swap the stream underneath
     // (calls on the stale copy just return ErrorClosed).
@@ -138,6 +146,8 @@ private:
     std::atomic<double> sourceFrameRemainder_{0.0};
     std::atomic<bool> isSeeking_{false};
     std::atomic<bool> isPlaying_{false};
+    // Latest lifecycle command wants playback (survives seeks, restarts and appends).
+    std::atomic<bool> playbackIntentActive_{false};
     std::atomic<bool> renderThreadRunning_{false};
     std::atomic<bool> renderThreadStopRequested_{false};
     std::atomic<bool> renderEndReached_{false};
@@ -157,7 +167,7 @@ private:
     };
     std::atomic<int64_t> durationMs_{0};
     int sampleRate_ = neuralsound::audio::DecodedAudioNormalizer::kOutputSampleRate;
-    int trackCount_ = 0;
+    std::atomic<int> trackCount_{0};
     const int maxTracks_;
     // Source frame where the track's decoder delivers its next sample.
     std::array<std::atomic<int64_t>, kTrackCapacity> trackHeadFrames_{};
@@ -172,6 +182,7 @@ private:
     std::atomic<int64_t> appendAnchorFrame_{0};
     std::atomic<int64_t> appendAnchorUs_{0};
     std::atomic<bool> joinRescuePending_{false};
+    neuralsound::audio::engine::RenderLifecycleCoordinator renderLifecycle_;
     PitchTempoProcessor pitchTempoProcessor_;
     neuralsound::audio::dsp::StereoLookaheadLimiter limiter_;
     neuralsound::audio::dsp::OutputAttenuationRamp outputAttenuation_;
