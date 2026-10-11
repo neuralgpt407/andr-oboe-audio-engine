@@ -22,7 +22,10 @@ class AudioEngine private constructor(context: Context) {
 
     /** Creates an independent player. Release it with [Player.release] when the owner goes away. */
     fun newPlayer(options: PlayerOptions = PlayerOptions()): Player = DefaultPlayer(
-        controller = NativeMixerController(applicationContext),
+        controller = NativeMixerController(
+            applicationContext,
+            maxTracks = options.maxTracks.coerceIn(1, PlayerOptions.MAX_SUPPORTED_TRACKS),
+        ),
         options = options,
         nativeAvailable = isAvailable,
     )

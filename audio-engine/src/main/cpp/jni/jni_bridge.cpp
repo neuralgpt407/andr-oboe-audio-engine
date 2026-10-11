@@ -28,8 +28,8 @@ std::shared_ptr<WaveformAnalyzer> waveformFromHandle(jlong handle) {
     return gWaveformAnalyzers.acquire(static_cast<uint64_t>(handle));
 }
 
-jlong nativeCreate(JNIEnv*, jobject) {
-    return reinterpret_cast<jlong>(new OboeAudioEngine());
+jlong nativeCreate(JNIEnv*, jobject, jint maxTracks) {
+    return reinterpret_cast<jlong>(new OboeAudioEngine(maxTracks));
 }
 
 jboolean nativeInitializeTracks(JNIEnv* env, jobject, jlong handle, jintArray jFds, jlongArray jDurations, jint count) {
@@ -441,7 +441,7 @@ void nativeReleaseWaveformAnalyzer(JNIEnv*, jobject, jlong handle) {
 }
 
 JNINativeMethod kMethods[] = {
-    {"nativeCreate", "()J", reinterpret_cast<void*>(nativeCreate)},
+    {"nativeCreate", "(I)J", reinterpret_cast<void*>(nativeCreate)},
     {"nativeInitializeTracks", "(J[I[JI)Z", reinterpret_cast<void*>(nativeInitializeTracks)},
     {"nativeAppendTrack", "(JIFZFFJ)Z", reinterpret_cast<void*>(nativeAppendTrack)},
     {"nativePlay", "(J)Z", reinterpret_cast<void*>(nativePlay)},

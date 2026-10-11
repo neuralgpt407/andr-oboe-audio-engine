@@ -12,6 +12,7 @@ import com.neuralsound.audio.internal.MixerPlaybackResult
 import com.neuralsound.audio.internal.MixerPreparationResult
 import com.neuralsound.audio.internal.OutputRoutePolicy
 import com.neuralsound.audio.player.AudioRoute
+import com.neuralsound.audio.player.FocusPolicy
 import com.neuralsound.audio.player.PitchTempo
 import com.neuralsound.audio.player.PlaybackRange
 import com.neuralsound.audio.player.Player
@@ -186,6 +187,10 @@ internal class DefaultPlayer(
 
     private suspend fun loadNow(source: PlayerSource): AudioResult<Unit> {
         if (!nativeAvailable) return AudioResult.Err(AudioError.Unavailable)
+        PlayerOptionsPolicy.problem(options)?.let { return AudioResult.Err(AudioError.InvalidConfiguration(it)) }
+        if (source.tracks.size > options.maxTracks) {
+            return AudioResult.Err(AudioError.TrackLimitExceeded(options.maxTracks))
+        }
         val requested = source.tracks.map { it.copy(settings = it.settings.clamped()) }
         val pitchTempo = source.pitchTempo.clamped()
         tracks.clear()
@@ -243,6 +248,9 @@ internal class DefaultPlayer(
 
     private fun appendNow(track: Track): AudioResult<Unit> {
         if (!controller.isPrepared()) return AudioResult.Err(AudioError.NotLoaded)
+        if (track.id !in tracks && tracks.size >= options.maxTracks) {
+            return AudioResult.Err(AudioError.TrackLimitExceeded(options.maxTracks))
+        }
         val clamped = track.copy(settings = track.settings.clamped())
         val result = controller.appendTrack(
             type = clamped.id,
@@ -421,4 +429,15 @@ internal object NoVideoController : VideoController {
     override fun suspendPresentation() = Unit
     override fun detachPresentation() = Unit
     override fun notifySurfaceRecreated() = Unit
+}
+
+/** Validation of [PlayerOptions]; an invalid option fails [Player.load] with `InvalidConfiguration`. */
+internal object PlayerOptionsPolicy {
+    fun problem(options: PlayerOptions): String? = when {
+        options.maxTracks !in 1..PlayerOptions.MAX_SUPPORTED_TRACKS ->
+            "maxTracks must be between 1 and ${PlayerOptions.MAX_SUPPORTED_TRACKS}, was ${options.maxTracks}"
+        options.focus is FocusPolicy.Duck && (options.focus as FocusPolicy.Duck).level !in 0f..1f ->
+            "Duck level must be between 0 and 1"
+        else -> null
+    }
 }

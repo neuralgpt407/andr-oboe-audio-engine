@@ -26,6 +26,9 @@ constexpr int kStreamRestartDelayMs = 250;
 constexpr int kShutdownPollMs = 50;
 }
 
+OboeAudioEngine::OboeAudioEngine(int maxTracks)
+    : maxTracks_(maxTracks < 1 ? 1 : (maxTracks > kTrackCapacity ? kTrackCapacity : maxTracks)) {}
+
 OboeAudioEngine::~OboeAudioEngine() {
     stop();
 }
@@ -36,10 +39,10 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
     restartPending_.store(false, std::memory_order_release);
     streamNeedsReopen_.store(false, std::memory_order_release);
     lastFailure_.store(NativeAudioFailureSnapshot{}.encode(), std::memory_order_release);
-    if (fds == nullptr || trackCount <= 0 || trackCount > kMaxTracks) return false;
+    if (fds == nullptr || trackCount <= 0 || trackCount > maxTracks_) return false;
     sampleRate_ = neuralsound::audio::DecodedAudioNormalizer::kOutputSampleRate;
 
-    for (int i = 0; i < kMaxTracks; ++i) {
+    for (int i = 0; i < kTrackCapacity; ++i) {
         volumes_[i].store(1.0f, std::memory_order_relaxed);
         leftGains_[i].store(1.0f, std::memory_order_relaxed);
         rightGains_[i].store(1.0f, std::memory_order_relaxed);
@@ -146,7 +149,7 @@ bool OboeAudioEngine::appendTrack(
     int64_t sourceAnchorUs = 0;
     {
         std::lock_guard<std::mutex> lock(trackMutex_);
-        if (trackCount_ >= kMaxTracks) return false;
+        if (trackCount_ >= maxTracks_) return false;
         index = trackCount_;
         const int64_t offsetFrames = saturatedScaleDivide(offsetMs, sampleRate_, 1000);
         sourceAnchorFrame = trackSourceFrame(
@@ -883,9 +886,9 @@ int OboeAudioEngine::mixSourceFrames(float* outputInterleaved, int frames, bool&
     }
 
     allEnd = false;
-    std::array<bool, kMaxTracks> shouldReadTrack{};
-    std::array<int, kMaxTracks> leadingSilentFrames{};
-    std::array<int, kMaxTracks> sourceFramesToRead{};
+    std::array<bool, kTrackCapacity> shouldReadTrack{};
+    std::array<int, kTrackCapacity> leadingSilentFrames{};
+    std::array<int, kTrackCapacity> sourceFramesToRead{};
     bool waitForReadiness = false;
 
     for (int i = 0; i < trackCount; ++i) {

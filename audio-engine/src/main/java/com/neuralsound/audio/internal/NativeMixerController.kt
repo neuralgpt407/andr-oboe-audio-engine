@@ -22,6 +22,7 @@ import com.neuralsound.audio.internal.legacy.PlaybackEffects
 import com.neuralsound.audio.internal.legacy.PlaybackRange
 import com.neuralsound.audio.internal.legacy.TrackMix
 import com.neuralsound.audio.TrackId
+import com.neuralsound.audio.player.PlayerOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +47,8 @@ private class MixerPreparationException(
 ) : IllegalStateException(message)
 
 internal class NativeMixerController(
-    context: Context
+    context: Context,
+    private val maxTracks: Int = PlayerOptions.DEFAULT_MAX_TRACKS,
 ) : MixerController {
     private val context = context.applicationContext
     private val tag = "OboeNativeMixerController"
@@ -336,7 +338,7 @@ internal class NativeMixerController(
                         format = format,
                     )
                 }
-                val handle = nativeCreate()
+                val handle = nativeCreate(maxTracks)
                 val initialized = handle != 0L &&
                     nativeInitializeTracks(handle, fds, durations, tracks.size)
                 if (!initialized) {
@@ -1116,7 +1118,7 @@ internal class NativeMixerController(
         deviceCallbackRegistered = false
     }
 
-    private external fun nativeCreate(): Long
+    private external fun nativeCreate(maxTracks: Int): Long
     private external fun nativeInitializeTracks(handle: Long, fds: IntArray, durations: LongArray, count: Int): Boolean
     private external fun nativeAppendTrack(
         handle: Long,

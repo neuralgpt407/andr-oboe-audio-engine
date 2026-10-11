@@ -19,7 +19,9 @@ class OboeAudioEngine
     : public oboe::AudioStreamDataCallback,
       public oboe::AudioStreamErrorCallback {
 public:
-    static constexpr int kMaxTracks = 8;
+    // Fixed per-track storage; the runtime limit per player is maxTracks_.
+    static constexpr int kTrackCapacity = 16;
+    static constexpr int kDefaultMaxTracks = 8;
     static constexpr int kOutputChannelCount = 2;
     static constexpr int kMaxOutputFrames = NativeDecoderThread::kDecodeChunkSamples / kOutputChannelCount;
     static constexpr int kMaxInputFrames = kMaxOutputFrames * 2;
@@ -31,7 +33,7 @@ public:
     static constexpr int kTargetPrebufferFrames = kMaxOutputFrames * 2;
     static constexpr int kAppendFadeInFrames = 1024;
 
-    OboeAudioEngine() = default;
+    explicit OboeAudioEngine(int maxTracks = kDefaultMaxTracks);
     ~OboeAudioEngine() override;
 
     bool initialize(const int* fds, const int64_t* durations, int trackCount);
@@ -115,11 +117,11 @@ private:
     std::thread renderThread_;
     std::thread joinRescueThread_;
     std::thread restartThread_;
-    std::array<std::atomic<float>, kMaxTracks> volumes_{};
-    std::array<std::atomic<float>, kMaxTracks> leftGains_{};
-    std::array<std::atomic<float>, kMaxTracks> rightGains_{};
-    std::array<std::atomic<bool>, kMaxTracks> mutes_{};
-    std::array<std::atomic<int64_t>, kMaxTracks> trackOffsetsMs_{};
+    std::array<std::atomic<float>, kTrackCapacity> volumes_{};
+    std::array<std::atomic<float>, kTrackCapacity> leftGains_{};
+    std::array<std::atomic<float>, kTrackCapacity> rightGains_{};
+    std::array<std::atomic<bool>, kTrackCapacity> mutes_{};
+    std::array<std::atomic<int64_t>, kTrackCapacity> trackOffsetsMs_{};
     std::atomic<int64_t> totalFramesWritten_{0};
     std::atomic<int64_t> sourceFramesConsumed_{0};
     std::atomic<int64_t> sourceFramesRendered_{0};
@@ -146,11 +148,12 @@ private:
     std::atomic<int64_t> durationMs_{0};
     int sampleRate_ = neuralsound::audio::DecodedAudioNormalizer::kOutputSampleRate;
     int trackCount_ = 0;
+    const int maxTracks_;
     // Source frame where the track's decoder delivers its next sample.
-    std::array<std::atomic<int64_t>, kMaxTracks> trackHeadFrames_{};
-    std::array<std::atomic<bool>, kMaxTracks> trackJoined_{};
-    std::array<std::atomic<int>, kMaxTracks> trackFadeFramesRemaining_{};
-    std::array<std::atomic<int64_t>, kMaxTracks> trackJoinDeadlineFrames_{};
+    std::array<std::atomic<int64_t>, kTrackCapacity> trackHeadFrames_{};
+    std::array<std::atomic<bool>, kTrackCapacity> trackJoined_{};
+    std::array<std::atomic<int>, kTrackCapacity> trackFadeFramesRemaining_{};
+    std::array<std::atomic<int64_t>, kTrackCapacity> trackJoinDeadlineFrames_{};
     // Last position every live decoder was extractor-seeked to (0 at init,
     // the target of the most recent seekTo otherwise). Extractor seeks are
     // not sample-accurate for MP3, so appended tracks must reuse this exact
