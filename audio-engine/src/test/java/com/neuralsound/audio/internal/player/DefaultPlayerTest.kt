@@ -210,6 +210,23 @@ class DefaultPlayerTest {
     }
 
     @Test
+    fun sourceBoostIsAppliedOnLoadAppendAndUpdate() = runTest {
+        val controller = FakeMixerController()
+        val player = player(controller)
+        player.load(PlayerSource(tracks = listOf(original.copy(settings = TrackSettings(boostDb = 6)))))
+        player.appendTrack(denoised.copy(settings = denoised.settings.copy(boostDb = 25)))
+        player.updateTrack(original.id) { it.copy(boostDb = 12) }
+        player.updateTrack(original.id) { it.copy(volume = 0.4f) }
+        advanceUntilIdle()
+
+        assertEquals(mapOf(original.id to 12, denoised.id to 18), controller.boosts)
+        assertEquals(1, controller.calls.count { it == "boost:original=12" })
+        assertEquals(18, player.state.value.tracks.getValue(denoised.id).settings.boostDb)
+        assertEquals(TrackSettings(volume = 0.4f, boostDb = 12), player.state.value.tracks.getValue(original.id).settings)
+        player.release()
+    }
+
+    @Test
     fun loadFailureNamesTheTrackWithoutItsUri() = runTest {
         val controller = FakeMixerController(
             prepareResult = MixerPreparationResult.Failure(
@@ -431,6 +448,19 @@ class DefaultPlayerTest {
         override fun setTrackOffset(type: TrackId, offsetMs: Long) {
             calls += "offset:$type=$offsetMs"
             update(type) { it.copy(offsetMs = offsetMs) }
+        }
+
+        val boosts = mutableMapOf<TrackId, Int>()
+        var attenuation = 1f
+
+        override fun setSourceBoostDb(type: TrackId, sourceBoostDb: Int) {
+            calls += "boost:$type=$sourceBoostDb"
+            boosts[type] = sourceBoostDb
+        }
+
+        override fun setOutputAttenuation(attenuation: Float) {
+            calls += "attenuation:$attenuation"
+            this.attenuation = attenuation
         }
 
         override fun setTempo(speed: Float) {

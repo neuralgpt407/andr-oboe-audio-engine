@@ -27,18 +27,15 @@ internal class MixerTrackState(
     private val _offsetMs = MutableStateFlow(initialOffsetMs)
     val offsetMs: StateFlow<Long> = _offsetMs.asStateFlow()
 
+    private val _sourceBoostDb = MutableStateFlow(0)
+    val sourceBoostDb: StateFlow<Int> = _sourceBoostDb.asStateFlow()
+
     val effectiveVolume: Float
         get() = if (_isMuted.value) 0f else _volume.value
 
+    /** Volume and mute are independent (public TrackSettings contract): volume never toggles mute. */
     fun setVolume(value: Float) {
-        val safeVolume = value.coerceIn(0f, 1f)
-        _volume.value = safeVolume
-        if (safeVolume > 0f && _isMuted.value) {
-            _isMuted.value = false
-        }
-        if (safeVolume == 0f) {
-            _isMuted.value = true
-        }
+        _volume.value = value.coerceIn(0f, 1f)
     }
 
     fun setMuted(muted: Boolean) {
@@ -51,5 +48,9 @@ internal class MixerTrackState(
 
     fun setOffset(offsetMs: Long) {
         _offsetMs.value = offsetMs
+    }
+
+    fun setSourceBoostDb(db: Int) {
+        _sourceBoostDb.value = db
     }
 }

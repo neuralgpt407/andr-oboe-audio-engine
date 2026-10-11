@@ -1,8 +1,11 @@
 #pragma once
 
 #include "AudioFifo.h"
+#include "OutputAttenuationRamp.h"
 #include "NativeDecoderThread.h"
 #include "PitchTempoProcessor.h"
+#include "SourceBoost.h"
+#include "StereoLookaheadLimiter.h"
 #include "TrackReadOffset.h"
 
 #include <oboe/Oboe.h>
@@ -54,6 +57,12 @@ public:
     void setMute(int trackIdx, bool muted);
     void setChannelGain(int trackIdx, float leftGain, float rightGain);
     void setTrackOffsetMs(int trackIdx, int64_t offsetMs);
+    // Output signal chain (FEAT-0001 FR-11/FR-12): per-track boost before the mix, then
+    // pitch/tempo, the lookahead limiter, the focus-duck attenuation ramp and a safety clamp.
+    bool setSourceBoostDb(int trackIdx, int sourceBoostDb);
+    void setOutputAttenuation(float attenuation);
+    // Debug/verification tap: largest |sample| reaching the safety clamp since the last call.
+    float consumeOutputPeak();
     void setTempo(float tempoSpeed);
     void setPitchSemitones(int semitones);
     int64_t getPositionMs() const;
@@ -122,6 +131,7 @@ private:
     std::array<std::atomic<float>, kTrackCapacity> rightGains_{};
     std::array<std::atomic<bool>, kTrackCapacity> mutes_{};
     std::array<std::atomic<int64_t>, kTrackCapacity> trackOffsetsMs_{};
+    std::array<neuralsound::audio::dsp::SourceBoost, kTrackCapacity> sourceBoosts_{};
     std::atomic<int64_t> totalFramesWritten_{0};
     std::atomic<int64_t> sourceFramesConsumed_{0};
     std::atomic<int64_t> sourceFramesRendered_{0};
@@ -163,8 +173,12 @@ private:
     std::atomic<int64_t> appendAnchorUs_{0};
     std::atomic<bool> joinRescuePending_{false};
     PitchTempoProcessor pitchTempoProcessor_;
+    neuralsound::audio::dsp::StereoLookaheadLimiter limiter_;
+    neuralsound::audio::dsp::OutputAttenuationRamp outputAttenuation_;
+    std::atomic<float> preClampPeak_{0.0f};
     AudioFifo outputFifo_;
     std::array<int16_t, kMaxInputSamples> readBuffer_{};
     std::array<float, kMaxInputSamples> mixBuffer_{};
     std::array<float, kMaxOutputSamples> processedBuffer_{};
+    std::array<float, kMaxOutputSamples> limitedBuffer_{};
 };

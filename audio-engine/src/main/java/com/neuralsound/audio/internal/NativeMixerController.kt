@@ -24,6 +24,7 @@ import com.neuralsound.audio.internal.legacy.TrackMix
 import com.neuralsound.audio.TrackId
 import com.neuralsound.audio.player.PitchTempo
 import com.neuralsound.audio.player.PlayerOptions
+import com.neuralsound.audio.player.TrackSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -628,6 +629,22 @@ internal class NativeMixerController(
         }
     }
 
+    override fun setSourceBoostDb(type: TrackId, sourceBoostDb: Int) {
+        val state = synchronized(this) { trackStates[type] } ?: return
+        val db = sourceBoostDb.coerceIn(TrackSettings.MIN_BOOST_DB, TrackSettings.MAX_BOOST_DB)
+        state.setSourceBoostDb(db)
+        trackIndexOf(type)?.let { index ->
+            engine.use { handle -> nativeSetSourceBoostDb(handle, index, db) }
+        }
+    }
+
+    /** Verification tap: peak |sample| that reached the safety clamp since the last call. */
+    fun consumeOutputPeak(): Float = engine.use(0f) { handle -> nativeConsumeOutputPeak(handle) }
+
+    override fun setOutputAttenuation(attenuation: Float) {
+        engine.use { handle -> nativeSetOutputAttenuation(handle, attenuation.coerceIn(0f, 1f)) }
+    }
+
     override fun setTempo(speed: Float) {
         val clampedSpeed = speed.coerceIn(PitchTempo.MIN_TEMPO, PitchTempo.MAX_TEMPO)
 
@@ -1137,6 +1154,9 @@ internal class NativeMixerController(
     private external fun nativeSetMute(handle: Long, trackIndex: Int, muted: Boolean)
     private external fun nativeSetChannelGain(handle: Long, trackIndex: Int, leftGain: Float, rightGain: Float)
     private external fun nativeSetTrackOffset(handle: Long, trackIndex: Int, offsetMs: Long)
+    private external fun nativeSetSourceBoostDb(handle: Long, trackIndex: Int, sourceBoostDb: Int): Boolean
+    private external fun nativeSetOutputAttenuation(handle: Long, attenuation: Float)
+    private external fun nativeConsumeOutputPeak(handle: Long): Float
     private external fun nativeSetTempo(handle: Long, speed: Float)
     private external fun nativeSetPitchSemitones(handle: Long, semitones: Int)
     private external fun nativeGetPositionMs(handle: Long): Long

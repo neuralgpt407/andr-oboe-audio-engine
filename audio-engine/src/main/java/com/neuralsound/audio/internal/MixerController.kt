@@ -56,6 +56,10 @@ internal interface MixerController {
     fun setChannelGain(type: TrackId, channelGain: ChannelGain)
     fun setMuted(type: TrackId, muted: Boolean)
     fun setTrackOffset(type: TrackId, offsetMs: Long)
+    fun setSourceBoostDb(type: TrackId, sourceBoostDb: Int)
+
+    /** Post-limiter output gain 0..1, ramped natively; used for focus ducking. */
+    fun setOutputAttenuation(attenuation: Float)
     fun setTempo(speed: Float)
     fun setPitchSemitones(semitones: Int)
     fun setLooping(looping: Boolean)

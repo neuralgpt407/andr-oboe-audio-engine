@@ -167,6 +167,7 @@ internal class DefaultPlayer(
         if (next.muted != current.settings.muted) controller.setMuted(id, next.muted)
         if (next.balance != current.settings.balance) controller.setChannelGain(id, LegacyMapping.toInternal(next.balance))
         if (next.offsetMs != current.settings.offsetMs) controller.setTrackOffset(id, next.offsetMs)
+        if (next.boostDb != current.settings.boostDb) controller.setSourceBoostDb(id, next.boostDb)
         tracks[id] = current.copy(settings = next)
         publishTracks()
     }
@@ -236,7 +237,7 @@ internal class DefaultPlayer(
         if (released.get()) return AudioResult.Err(AudioError.Released)
         return when (result) {
             MixerPreparationResult.Success -> {
-                requested.forEach { controller.setMuted(it.id, it.settings.muted) }
+                requested.forEach { applyPostJoinSettings(it) }
                 updateLive {
                     it.copy(
                         status = PlayerStatus.READY,
@@ -274,6 +275,7 @@ internal class DefaultPlayer(
         )
         return when (result) {
             MixerAppendResult.Success -> {
+                applyPostJoinSettings(clamped)
                 tracks[clamped.id] = clamped
                 updateLive { it.copy(tracks = trackStates(), durationMs = controller.totalDuration.value) }
                 AudioResult.Done
@@ -286,6 +288,12 @@ internal class DefaultPlayer(
                 AudioResult.Err(error)
             }
         }
+    }
+
+    /** Settings the controller does not take at prepare/append time. */
+    private fun applyPostJoinSettings(track: Track) {
+        controller.setMuted(track.id, track.settings.muted)
+        if (track.settings.boostDb != 0) controller.setSourceBoostDb(track.id, track.settings.boostDb)
     }
 
     private fun playNow() {

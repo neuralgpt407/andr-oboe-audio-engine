@@ -104,6 +104,12 @@ void nativeSetVolume(JNIEnv*, jobject, jlong handle, jint index, jfloat volume) 
 void nativeSetMute(JNIEnv*, jobject, jlong handle, jint index, jboolean muted) { if (auto* engine = fromHandle(handle)) engine->setMute(index, muted == JNI_TRUE); }
 void nativeSetChannelGain(JNIEnv*, jobject, jlong handle, jint index, jfloat leftGain, jfloat rightGain) { if (auto* engine = fromHandle(handle)) engine->setChannelGain(index, leftGain, rightGain); }
 void nativeSetTrackOffset(JNIEnv*, jobject, jlong handle, jint index, jlong offsetMs) { if (auto* engine = fromHandle(handle)) engine->setTrackOffsetMs(index, offsetMs); }
+jboolean nativeSetSourceBoostDb(JNIEnv*, jobject, jlong handle, jint index, jint db) {
+    auto* engine = fromHandle(handle);
+    return engine != nullptr && engine->setSourceBoostDb(index, db) ? JNI_TRUE : JNI_FALSE;
+}
+void nativeSetOutputAttenuation(JNIEnv*, jobject, jlong handle, jfloat attenuation) { if (auto* engine = fromHandle(handle)) engine->setOutputAttenuation(attenuation); }
+jfloat nativeConsumeOutputPeak(JNIEnv*, jobject, jlong handle) { auto* engine = fromHandle(handle); return engine != nullptr ? engine->consumeOutputPeak() : 0.0f; }
 void nativeSetTempo(JNIEnv*, jobject, jlong handle, jfloat speed) { if (auto* engine = fromHandle(handle)) engine->setTempo(speed); }
 void nativeSetPitchSemitones(JNIEnv*, jobject, jlong handle, jint semitones) { if (auto* engine = fromHandle(handle)) engine->setPitchSemitones(semitones); }
 
@@ -453,6 +459,9 @@ JNINativeMethod kMethods[] = {
     {"nativeSetMute", "(JIZ)V", reinterpret_cast<void*>(nativeSetMute)},
     {"nativeSetChannelGain", "(JIFF)V", reinterpret_cast<void*>(nativeSetChannelGain)},
     {"nativeSetTrackOffset", "(JIJ)V", reinterpret_cast<void*>(nativeSetTrackOffset)},
+    {"nativeSetSourceBoostDb", "(JII)Z", reinterpret_cast<void*>(nativeSetSourceBoostDb)},
+    {"nativeSetOutputAttenuation", "(JF)V", reinterpret_cast<void*>(nativeSetOutputAttenuation)},
+    {"nativeConsumeOutputPeak", "(J)F", reinterpret_cast<void*>(nativeConsumeOutputPeak)},
     {"nativeSetTempo", "(JF)V", reinterpret_cast<void*>(nativeSetTempo)},
     {"nativeSetPitchSemitones", "(JI)V", reinterpret_cast<void*>(nativeSetPitchSemitones)},
     {"nativeGetPositionMs", "(J)J", reinterpret_cast<void*>(nativeGetPositionMs)},

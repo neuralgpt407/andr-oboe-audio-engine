@@ -1,4 +1,5 @@
 #include "OboeAudioEngine.h"
+#include "OutputSignalChain.h"
 
 #include <android/log.h>
 
@@ -48,6 +49,7 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
         rightGains_[i].store(1.0f, std::memory_order_relaxed);
         mutes_[i].store(false, std::memory_order_relaxed);
         trackOffsetsMs_[i].store(0, std::memory_order_relaxed);
+        sourceBoosts_[i].reset();
         trackHeadFrames_[i].store(0, std::memory_order_relaxed);
         trackJoined_[i].store(true, std::memory_order_relaxed);
         trackFadeFramesRemaining_[i].store(0, std::memory_order_relaxed);
@@ -102,7 +104,12 @@ bool OboeAudioEngine::initialize(const int* fds, const int64_t* durations, int t
     }
 
     pitchTempoProcessor_.prepare(sampleRate_, kOutputChannelCount, kMaxOutputFrames);
+    for (auto& sourceBoost : sourceBoosts_) {
+        sourceBoost.prepare(sampleRate_);
+    }
+    limiter_.prepare(sampleRate_);
     outputFifo_.prepare(kOutputChannelCount, kOutputFifoFrames);
+    outputAttenuation_.prepare(sampleRate_);
     totalFramesWritten_.store(0, std::memory_order_release);
     sourceFramesConsumed_.store(0, std::memory_order_release);
     sourceFramesRendered_.store(0, std::memory_order_release);
@@ -197,6 +204,7 @@ bool OboeAudioEngine::appendTrack(
         trackHeadFrames_[index].store(sourceAnchorFrame, std::memory_order_release);
         trackJoined_[index].store(false, std::memory_order_release);
         trackFadeFramesRemaining_[index].store(kAppendFadeInFrames, std::memory_order_release);
+        sourceBoosts_[index].prepare(sampleRate_);
         trackJoinDeadlineFrames_[index].store(
             sourceFramesRendered_.load(std::memory_order_acquire) +
                 static_cast<int64_t>(sampleRate_) * kAppendJoinWatchdogSeconds,
@@ -316,6 +324,8 @@ void OboeAudioEngine::stop() {
     sourceFrameRemainder_.store(0.0, std::memory_order_release);
     renderEndReached_.store(false, std::memory_order_release);
     pitchTempoProcessor_.reset();
+    limiter_.reset();
+    outputAttenuation_.reset();
 }
 
 bool OboeAudioEngine::seekTo(int64_t ms) {
@@ -449,6 +459,7 @@ bool OboeAudioEngine::seekTo(int64_t ms) {
     sourceFrameRemainder_.store(0.0, std::memory_order_release);
     renderEndReached_.store(false, std::memory_order_release);
     pitchTempoProcessor_.reset();
+    limiter_.reset();
     fadeOutScale_.store(1.0f, std::memory_order_release);
     isFadingOut_.store(false, std::memory_order_release);
     fadeOutComplete_.store(true, std::memory_order_release);
@@ -482,6 +493,20 @@ void OboeAudioEngine::setChannelGain(int trackIdx, float leftGain, float rightGa
 void OboeAudioEngine::setTrackOffsetMs(int trackIdx, int64_t offsetMs) {
     if (trackIdx < 0 || trackIdx >= trackCount_) return;
     trackOffsetsMs_[trackIdx].store(offsetMs, std::memory_order_release);
+}
+
+bool OboeAudioEngine::setSourceBoostDb(int trackIdx, int sourceBoostDb) {
+    if (trackIdx < 0 || trackIdx >= trackCount_) return false;
+    sourceBoosts_[trackIdx].setTargetDb(sourceBoostDb);
+    return true;
+}
+
+void OboeAudioEngine::setOutputAttenuation(float attenuation) {
+    outputAttenuation_.setTarget(attenuation);
+}
+
+float OboeAudioEngine::consumeOutputPeak() {
+    return preClampPeak_.exchange(0.0f, std::memory_order_relaxed);
 }
 
 void OboeAudioEngine::setTempo(float tempoSpeed) {
@@ -597,6 +622,19 @@ oboe::DataCallbackResult OboeAudioEngine::onAudioReady(
         fadeOutScale_.store(scale, std::memory_order_relaxed);
     }
 
+    neuralsound::audio::dsp::applyPostLimiterOutputAttenuation(outputAttenuation_, out, outputFrames);
+
+    constexpr float kSafetyCeiling = neuralsound::audio::dsp::StereoLookaheadLimiter::kCeiling;
+    float callbackPeak = 0.0f;
+    for (int sample = 0; sample < outputFrames * kOutputChannelCount; ++sample) {
+        const float value = std::isfinite(out[sample]) ? out[sample] : 0.0f;
+        callbackPeak = std::max(callbackPeak, std::fabs(value));
+        out[sample] = std::clamp(value, -kSafetyCeiling, kSafetyCeiling);
+    }
+    if (callbackPeak > preClampPeak_.load(std::memory_order_relaxed)) {
+        preClampPeak_.store(callbackPeak, std::memory_order_relaxed);
+    }
+
     totalFramesWritten_.fetch_add(outputFrames, std::memory_order_release);
     advanceSourcePositionForOutput(framesRead);
 
@@ -667,7 +705,8 @@ void OboeAudioEngine::renderLoop() {
 
         bool allEnd = false;
         const int framesRendered = renderNextChunk(allEnd);
-        if (allEnd && framesRendered == 0 && !pitchTempoProcessor_.hasPendingOutput()) {
+        if (allEnd && framesRendered == 0 && !pitchTempoProcessor_.hasPendingOutput() &&
+            !limiter_.hasPendingOutput()) {
             renderEndReached_.store(true, std::memory_order_release);
             break;
         }
@@ -689,11 +728,16 @@ int OboeAudioEngine::renderNextChunk(bool& allEnd) {
     const int outputFrames = std::min(kRenderChunkFrames, writableFrames);
     if (pitchTempoProcessor_.isBypassed()) {
         const int sourceFramesRead = mixSourceFrames(mixBuffer_.data(), outputFrames, allEnd);
-        if (sourceFramesRead <= 0) {
-            return 0;
+        if (sourceFramesRead > 0) {
+            sourceFramesRendered_.fetch_add(sourceFramesRead, std::memory_order_release);
+            const int limitedFrames = limiter_.process(mixBuffer_.data(), sourceFramesRead, limitedBuffer_.data());
+            return outputFifo_.write(limitedBuffer_.data(), limitedFrames);
         }
-        sourceFramesRendered_.fetch_add(sourceFramesRead, std::memory_order_release);
-        return outputFifo_.write(mixBuffer_.data(), sourceFramesRead);
+        if (allEnd) {
+            const int drainedFrames = limiter_.drain(limitedBuffer_.data(), outputFrames);
+            return outputFifo_.write(limitedBuffer_.data(), drainedFrames);
+        }
+        return 0;
     }
 
     const int inputFramesNeeded = std::min(
@@ -715,9 +759,14 @@ int OboeAudioEngine::renderNextChunk(bool& allEnd) {
         outputFrames
     );
     if (processedFrames <= 0) {
+        if (allEnd && !pitchTempoProcessor_.hasPendingOutput()) {
+            const int drainedFrames = limiter_.drain(limitedBuffer_.data(), outputFrames);
+            return outputFifo_.write(limitedBuffer_.data(), drainedFrames);
+        }
         return 0;
     }
-    return outputFifo_.write(processedBuffer_.data(), processedFrames);
+    const int limitedFrames = limiter_.process(processedBuffer_.data(), processedFrames, limitedBuffer_.data());
+    return outputFifo_.write(limitedBuffer_.data(), limitedFrames);
 }
 
 bool OboeAudioEngine::waitForRenderPrebuffer(int minFrames, int timeoutMs) {
@@ -958,6 +1007,7 @@ int OboeAudioEngine::mixSourceFrames(float* outputInterleaved, int frames, bool&
     for (int i = 0; i < trackCount; ++i) {
         const int sourceFrames = sourceFramesToRead[static_cast<size_t>(i)];
         if (!shouldReadTrack[static_cast<size_t>(i)] || sourceFrames <= 0) {
+            sourceBoosts_[i].advanceFrames(requestedFrames);
             continue;
         }
 
@@ -972,40 +1022,37 @@ int OboeAudioEngine::mixSourceFrames(float* outputInterleaved, int frames, bool&
         );
         if (read > 0) {
             allEnd = false;
-            if (!muted && volume > 0.0f) {
-                int fadeFrames = trackFadeFramesRemaining_[i].load(std::memory_order_relaxed);
-                const int readFrames = read / kOutputChannelCount;
-                for (int frame = 0; frame < readFrames; ++frame) {
-                    float fadeGain = 1.0f;
-                    if (fadeFrames > 0) {
-                        fadeGain = static_cast<float>(kAppendFadeInFrames - fadeFrames) /
-                            static_cast<float>(kAppendFadeInFrames);
-                        fadeFrames -= 1;
-                    }
-                    for (int channel = 0; channel < kOutputChannelCount; ++channel) {
-                        const int sample = frame * kOutputChannelCount + channel;
-                        const int outputSample =
-                            (leadingSilentFrames[static_cast<size_t>(i)] + frame) *
-                                kOutputChannelCount + channel;
-                        const float channelGain = channel == 0 ? leftGain : rightGain;
-                        outputInterleaved[outputSample] +=
-                            (static_cast<float>(readBuffer_[sample]) / 32768.0f) *
-                            volume *
-                            channelGain *
-                            fadeGain;
-                    }
+            const int leadingFrames = leadingSilentFrames[static_cast<size_t>(i)];
+            sourceBoosts_[i].advanceFrames(leadingFrames);
+            int fadeFrames = trackFadeFramesRemaining_[i].load(std::memory_order_relaxed);
+            const int readFrames = read / kOutputChannelCount;
+            for (int frame = 0; frame < readFrames; ++frame) {
+                // Advance the boost ramp even while muted so unmuting never jumps.
+                const float sourceBoostGain = sourceBoosts_[i].nextLinearGain();
+                float fadeGain = 1.0f;
+                if (fadeFrames > 0) {
+                    fadeGain = static_cast<float>(kAppendFadeInFrames - fadeFrames) /
+                        static_cast<float>(kAppendFadeInFrames);
+                    fadeFrames -= 1;
                 }
-                trackFadeFramesRemaining_[i].store(std::max(0, fadeFrames), std::memory_order_relaxed);
-            } else {
-                const int readFrames = read / kOutputChannelCount;
-                const int fadeFrames = trackFadeFramesRemaining_[i].load(std::memory_order_relaxed);
-                trackFadeFramesRemaining_[i].store(
-                    std::max(0, fadeFrames - readFrames),
-                    std::memory_order_relaxed
-                );
+                if (muted || volume <= 0.0f) continue;
+                for (int channel = 0; channel < kOutputChannelCount; ++channel) {
+                    const int sample = frame * kOutputChannelCount + channel;
+                    const int outputSample = (leadingFrames + frame) * kOutputChannelCount + channel;
+                    const float channelGain = channel == 0 ? leftGain : rightGain;
+                    outputInterleaved[outputSample] +=
+                        (static_cast<float>(readBuffer_[sample]) / 32768.0f) *
+                        volume *
+                        channelGain *
+                        sourceBoostGain *
+                        fadeGain;
+                }
             }
+            trackFadeFramesRemaining_[i].store(std::max(0, fadeFrames), std::memory_order_relaxed);
+            sourceBoosts_[i].advanceFrames(std::max(0, requestedFrames - leadingFrames - readFrames));
         } else if (read == 0) {
             allEnd = false;
+            sourceBoosts_[i].advanceFrames(requestedFrames);
         }
     }
 
