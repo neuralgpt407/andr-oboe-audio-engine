@@ -6,6 +6,9 @@ find_package(oboe REQUIRED CONFIG)
 add_library(neuralsound_audio_engine SHARED
     dsp/DecodedAudioNormalizer.cpp
     dsp/SampleRateConverter.cpp
+    dsp/SourceBoost.cpp
+    dsp/StereoLookaheadLimiter.cpp
+    dsp/OutputAttenuationRamp.cpp
     effects/AudioFifo.cpp
     effects/PitchTempoProcessor.cpp
     engine/NativeAudioDecoder.cpp
