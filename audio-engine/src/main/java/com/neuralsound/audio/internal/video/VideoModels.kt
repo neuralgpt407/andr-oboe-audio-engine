@@ -2,7 +2,7 @@ package com.neuralsound.audio.internal.video
 
 import android.net.Uri
 import androidx.media3.common.Player
-import com.neuralsound.audio.MixerRequest
+import com.neuralsound.audio.internal.legacy.MixerRequest
 
 internal data class VideoPresenterState(
     val player: Player? = null,

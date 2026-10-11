@@ -1,0 +1,866 @@
+public final class com/neuralsound/audio/AudioEngine {
+	public static final field Companion Lcom/neuralsound/audio/AudioEngine$Companion;
+	public synthetic fun <init> (Landroid/content/Context;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun create (Landroid/content/Context;)Lcom/neuralsound/audio/AudioEngine;
+	public final fun getWaveforms ()Lcom/neuralsound/audio/waveform/WaveformAnalyzer;
+	public final fun isAvailable ()Z
+	public final fun newPlayer (Lcom/neuralsound/audio/player/PlayerOptions;)Lcom/neuralsound/audio/player/Player;
+	public static synthetic fun newPlayer$default (Lcom/neuralsound/audio/AudioEngine;Lcom/neuralsound/audio/player/PlayerOptions;ILjava/lang/Object;)Lcom/neuralsound/audio/player/Player;
+	public final fun newRecorder ()Lcom/neuralsound/audio/recorder/Recorder;
+}
+
+public final class com/neuralsound/audio/AudioEngine$Companion {
+	public final fun create (Landroid/content/Context;)Lcom/neuralsound/audio/AudioEngine;
+}
+
+public abstract interface class com/neuralsound/audio/AudioError {
+}
+
+public final class com/neuralsound/audio/AudioError$Disconnected : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$Disconnected;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$FileError : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$FileError;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$InvalidConfiguration : com/neuralsound/audio/AudioError {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/neuralsound/audio/AudioError$InvalidConfiguration;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/AudioError$InvalidConfiguration;Ljava/lang/String;ILjava/lang/Object;)Lcom/neuralsound/audio/AudioError$InvalidConfiguration;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$InvalidState : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$InvalidState;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$MicUnavailable : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$MicUnavailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$Native : com/neuralsound/audio/AudioError {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/neuralsound/audio/AudioError$Native;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/AudioError$Native;Ljava/lang/String;ILjava/lang/Object;)Lcom/neuralsound/audio/AudioError$Native;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOperation ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$NotLoaded : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$NotLoaded;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$PermissionDenied : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$PermissionDenied;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$Released : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$Released;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$RouteNotSupported : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$RouteNotSupported;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$TrackFailed : com/neuralsound/audio/AudioError {
+	public synthetic fun <init> (Ljava/lang/String;Lcom/neuralsound/audio/TrackFailureReason;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-k1C3Psg ()Ljava/lang/String;
+	public final fun component2 ()Lcom/neuralsound/audio/TrackFailureReason;
+	public final fun copy-htSER0o (Ljava/lang/String;Lcom/neuralsound/audio/TrackFailureReason;)Lcom/neuralsound/audio/AudioError$TrackFailed;
+	public static synthetic fun copy-htSER0o$default (Lcom/neuralsound/audio/AudioError$TrackFailed;Ljava/lang/String;Lcom/neuralsound/audio/TrackFailureReason;ILjava/lang/Object;)Lcom/neuralsound/audio/AudioError$TrackFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Lcom/neuralsound/audio/TrackFailureReason;
+	public final fun getTrackId-k1C3Psg ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$TrackLimitExceeded : com/neuralsound/audio/AudioError {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/neuralsound/audio/AudioError$TrackLimitExceeded;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/AudioError$TrackLimitExceeded;IILjava/lang/Object;)Lcom/neuralsound/audio/AudioError$TrackLimitExceeded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLimit ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$Unavailable : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$Unavailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioError$WriterOverflow : com/neuralsound/audio/AudioError {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioError$WriterOverflow;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/neuralsound/audio/AudioResult {
+	public static final field Companion Lcom/neuralsound/audio/AudioResult$Companion;
+	public static final field Done Lcom/neuralsound/audio/AudioResult;
+	public abstract fun errorOrNull ()Lcom/neuralsound/audio/AudioError;
+	public abstract fun getOrNull ()Ljava/lang/Object;
+	public abstract fun isOk ()Z
+}
+
+public final class com/neuralsound/audio/AudioResult$Companion {
+}
+
+public final class com/neuralsound/audio/AudioResult$DefaultImpls {
+	public static fun errorOrNull (Lcom/neuralsound/audio/AudioResult;)Lcom/neuralsound/audio/AudioError;
+	public static fun getOrNull (Lcom/neuralsound/audio/AudioResult;)Ljava/lang/Object;
+	public static fun isOk (Lcom/neuralsound/audio/AudioResult;)Z
+}
+
+public final class com/neuralsound/audio/AudioResult$Err : com/neuralsound/audio/AudioResult {
+	public fun <init> (Lcom/neuralsound/audio/AudioError;)V
+	public final fun component1 ()Lcom/neuralsound/audio/AudioError;
+	public final fun copy (Lcom/neuralsound/audio/AudioError;)Lcom/neuralsound/audio/AudioResult$Err;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/AudioResult$Err;Lcom/neuralsound/audio/AudioError;ILjava/lang/Object;)Lcom/neuralsound/audio/AudioResult$Err;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun errorOrNull ()Lcom/neuralsound/audio/AudioError;
+	public final fun getError ()Lcom/neuralsound/audio/AudioError;
+	public synthetic fun getOrNull ()Ljava/lang/Object;
+	public fun getOrNull ()Ljava/lang/Void;
+	public fun hashCode ()I
+	public fun isOk ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioResult$Ok : com/neuralsound/audio/AudioResult {
+	public fun <init> (Ljava/lang/Object;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun copy (Ljava/lang/Object;)Lcom/neuralsound/audio/AudioResult$Ok;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/AudioResult$Ok;Ljava/lang/Object;ILjava/lang/Object;)Lcom/neuralsound/audio/AudioResult$Ok;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun errorOrNull ()Lcom/neuralsound/audio/AudioError;
+	public fun getOrNull ()Ljava/lang/Object;
+	public final fun getValue ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun isOk ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/AudioResultKt {
+	public static final fun onErr (Lcom/neuralsound/audio/AudioResult;Lkotlin/jvm/functions/Function1;)Lcom/neuralsound/audio/AudioResult;
+	public static final fun onOk (Lcom/neuralsound/audio/AudioResult;Lkotlin/jvm/functions/Function1;)Lcom/neuralsound/audio/AudioResult;
+}
+
+public final class com/neuralsound/audio/TrackFailureReason : java/lang/Enum {
+	public static final field CORRUPT_MEDIA Lcom/neuralsound/audio/TrackFailureReason;
+	public static final field DECODE_FAILURE Lcom/neuralsound/audio/TrackFailureReason;
+	public static final field EMPTY_SOURCE Lcom/neuralsound/audio/TrackFailureReason;
+	public static final field NO_AUDIO_TRACK Lcom/neuralsound/audio/TrackFailureReason;
+	public static final field UNREADABLE_SOURCE Lcom/neuralsound/audio/TrackFailureReason;
+	public static final field UNSUPPORTED_CODEC Lcom/neuralsound/audio/TrackFailureReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/TrackFailureReason;
+	public static fun values ()[Lcom/neuralsound/audio/TrackFailureReason;
+}
+
+public final class com/neuralsound/audio/TrackId {
+	public static final synthetic fun box-impl (Ljava/lang/String;)Lcom/neuralsound/audio/TrackId;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/AudioRoute {
+	public fun <init> (Lcom/neuralsound/audio/player/RouteKind;Ljava/lang/Integer;Ljava/lang/Integer;J)V
+	public synthetic fun <init> (Lcom/neuralsound/audio/player/RouteKind;Ljava/lang/Integer;Ljava/lang/Integer;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/neuralsound/audio/player/RouteKind;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun component3 ()Ljava/lang/Integer;
+	public final fun component4 ()J
+	public final fun copy (Lcom/neuralsound/audio/player/RouteKind;Ljava/lang/Integer;Ljava/lang/Integer;J)Lcom/neuralsound/audio/player/AudioRoute;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/AudioRoute;Lcom/neuralsound/audio/player/RouteKind;Ljava/lang/Integer;Ljava/lang/Integer;JILjava/lang/Object;)Lcom/neuralsound/audio/player/AudioRoute;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeviceId ()Ljava/lang/Integer;
+	public final fun getDeviceType ()Ljava/lang/Integer;
+	public final fun getKind ()Lcom/neuralsound/audio/player/RouteKind;
+	public final fun getTopologyRevision ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/ChannelGain {
+	public static final field Center Lcom/neuralsound/audio/player/ChannelGain;
+	public static final field Companion Lcom/neuralsound/audio/player/ChannelGain$Companion;
+	public static final field Left Lcom/neuralsound/audio/player/ChannelGain;
+	public static final field MAX_GAIN F
+	public static final field MIN_GAIN F
+	public static final field Right Lcom/neuralsound/audio/player/ChannelGain;
+	public fun <init> ()V
+	public fun <init> (FF)V
+	public synthetic fun <init> (FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun balance (F)Lcom/neuralsound/audio/player/ChannelGain;
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun copy (FF)Lcom/neuralsound/audio/player/ChannelGain;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/ChannelGain;FFILjava/lang/Object;)Lcom/neuralsound/audio/player/ChannelGain;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLeft ()F
+	public final fun getRight ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/ChannelGain$Companion {
+	public final fun balance (F)Lcom/neuralsound/audio/player/ChannelGain;
+}
+
+public final class com/neuralsound/audio/player/CompletionReason : java/lang/Enum {
+	public static final field END_OF_MEDIA Lcom/neuralsound/audio/player/CompletionReason;
+	public static final field END_OF_RANGE Lcom/neuralsound/audio/player/CompletionReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/player/CompletionReason;
+	public static fun values ()[Lcom/neuralsound/audio/player/CompletionReason;
+}
+
+public abstract interface class com/neuralsound/audio/player/FocusPolicy {
+}
+
+public final class com/neuralsound/audio/player/FocusPolicy$Duck : com/neuralsound/audio/player/FocusPolicy {
+	public fun <init> ()V
+	public fun <init> (F)V
+	public synthetic fun <init> (FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun copy (F)Lcom/neuralsound/audio/player/FocusPolicy$Duck;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/FocusPolicy$Duck;FILjava/lang/Object;)Lcom/neuralsound/audio/player/FocusPolicy$Duck;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLevel ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/FocusPolicy$Ignore : com/neuralsound/audio/player/FocusPolicy {
+	public static final field INSTANCE Lcom/neuralsound/audio/player/FocusPolicy$Ignore;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/FocusPolicy$PauseAndResume : com/neuralsound/audio/player/FocusPolicy {
+	public static final field INSTANCE Lcom/neuralsound/audio/player/FocusPolicy$PauseAndResume;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/FocusState : java/lang/Enum {
+	public static final field DUCKED Lcom/neuralsound/audio/player/FocusState;
+	public static final field GAINED Lcom/neuralsound/audio/player/FocusState;
+	public static final field LOST Lcom/neuralsound/audio/player/FocusState;
+	public static final field LOST_TRANSIENT Lcom/neuralsound/audio/player/FocusState;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/player/FocusState;
+	public static fun values ()[Lcom/neuralsound/audio/player/FocusState;
+}
+
+public final class com/neuralsound/audio/player/PitchTempo {
+	public static final field Companion Lcom/neuralsound/audio/player/PitchTempo$Companion;
+	public static final field MAX_SEMITONES I
+	public static final field MAX_TEMPO F
+	public static final field MIN_SEMITONES I
+	public static final field MIN_TEMPO F
+	public fun <init> ()V
+	public fun <init> (IF)V
+	public synthetic fun <init> (IFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun clamped ()Lcom/neuralsound/audio/player/PitchTempo;
+	public final fun component1 ()I
+	public final fun component2 ()F
+	public final fun copy (IF)Lcom/neuralsound/audio/player/PitchTempo;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PitchTempo;IFILjava/lang/Object;)Lcom/neuralsound/audio/player/PitchTempo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSemitones ()I
+	public final fun getTempo ()F
+	public fun hashCode ()I
+	public final fun isNeutral ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PitchTempo$Companion {
+}
+
+public final class com/neuralsound/audio/player/PlaybackRange {
+	public fun <init> (JJ)V
+	public final fun clampTo (J)Lcom/neuralsound/audio/player/PlaybackRange;
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Lcom/neuralsound/audio/player/PlaybackRange;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlaybackRange;JJILjava/lang/Object;)Lcom/neuralsound/audio/player/PlaybackRange;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMs ()J
+	public final fun getEndMs ()J
+	public final fun getStartMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/neuralsound/audio/player/Player {
+	public abstract fun appendTrack (Lcom/neuralsound/audio/player/Track;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun detach (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun getEvents ()Lkotlinx/coroutines/flow/Flow;
+	public abstract fun getState ()Lkotlinx/coroutines/flow/StateFlow;
+	public abstract fun getVideo ()Lcom/neuralsound/audio/player/VideoController;
+	public abstract fun load (Lcom/neuralsound/audio/player/PlayerSource;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun pause ()V
+	public abstract fun play ()V
+	public abstract fun release (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun restore (Lcom/neuralsound/audio/player/PlayerSnapshot;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun seekAndPlay (J)V
+	public abstract fun seekBy (J)V
+	public abstract fun seekTo (J)V
+	public abstract fun seekToFraction (F)V
+	public abstract fun setPitchTempo (Lcom/neuralsound/audio/player/PitchTempo;)V
+	public abstract fun setRange (Lcom/neuralsound/audio/player/PlaybackRange;Z)V
+	public abstract fun togglePlayPause ()V
+	public abstract fun updateTrack-htSER0o (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+}
+
+public abstract interface class com/neuralsound/audio/player/PlayerEvent {
+}
+
+public final class com/neuralsound/audio/player/PlayerEvent$Completed : com/neuralsound/audio/player/PlayerEvent {
+	public fun <init> (Lcom/neuralsound/audio/player/CompletionReason;J)V
+	public final fun component1 ()Lcom/neuralsound/audio/player/CompletionReason;
+	public final fun component2 ()J
+	public final fun copy (Lcom/neuralsound/audio/player/CompletionReason;J)Lcom/neuralsound/audio/player/PlayerEvent$Completed;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlayerEvent$Completed;Lcom/neuralsound/audio/player/CompletionReason;JILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerEvent$Completed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPositionMs ()J
+	public final fun getReason ()Lcom/neuralsound/audio/player/CompletionReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerEvent$Failed : com/neuralsound/audio/player/PlayerEvent {
+	public fun <init> (Lcom/neuralsound/audio/AudioError;)V
+	public final fun component1 ()Lcom/neuralsound/audio/AudioError;
+	public final fun copy (Lcom/neuralsound/audio/AudioError;)Lcom/neuralsound/audio/player/PlayerEvent$Failed;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlayerEvent$Failed;Lcom/neuralsound/audio/AudioError;ILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerEvent$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Lcom/neuralsound/audio/AudioError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerEvent$FocusChanged : com/neuralsound/audio/player/PlayerEvent {
+	public fun <init> (Lcom/neuralsound/audio/player/FocusState;)V
+	public final fun component1 ()Lcom/neuralsound/audio/player/FocusState;
+	public final fun copy (Lcom/neuralsound/audio/player/FocusState;)Lcom/neuralsound/audio/player/PlayerEvent$FocusChanged;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlayerEvent$FocusChanged;Lcom/neuralsound/audio/player/FocusState;ILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerEvent$FocusChanged;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFocus ()Lcom/neuralsound/audio/player/FocusState;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerEvent$RouteChanged : com/neuralsound/audio/player/PlayerEvent {
+	public fun <init> (Lcom/neuralsound/audio/player/AudioRoute;)V
+	public final fun component1 ()Lcom/neuralsound/audio/player/AudioRoute;
+	public final fun copy (Lcom/neuralsound/audio/player/AudioRoute;)Lcom/neuralsound/audio/player/PlayerEvent$RouteChanged;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlayerEvent$RouteChanged;Lcom/neuralsound/audio/player/AudioRoute;ILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerEvent$RouteChanged;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRoute ()Lcom/neuralsound/audio/player/AudioRoute;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerEvent$TrackFailed : com/neuralsound/audio/player/PlayerEvent {
+	public synthetic fun <init> (Ljava/lang/String;Lcom/neuralsound/audio/TrackFailureReason;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-k1C3Psg ()Ljava/lang/String;
+	public final fun component2 ()Lcom/neuralsound/audio/TrackFailureReason;
+	public final fun copy-htSER0o (Ljava/lang/String;Lcom/neuralsound/audio/TrackFailureReason;)Lcom/neuralsound/audio/player/PlayerEvent$TrackFailed;
+	public static synthetic fun copy-htSER0o$default (Lcom/neuralsound/audio/player/PlayerEvent$TrackFailed;Ljava/lang/String;Lcom/neuralsound/audio/TrackFailureReason;ILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerEvent$TrackFailed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Lcom/neuralsound/audio/TrackFailureReason;
+	public final fun getTrackId-k1C3Psg ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerOptions {
+	public static final field Companion Lcom/neuralsound/audio/player/PlayerOptions$Companion;
+	public static final field DEFAULT_MAX_TRACKS I
+	public static final field MAX_SUPPORTED_TRACKS I
+	public fun <init> ()V
+	public fun <init> (ILcom/neuralsound/audio/player/FocusPolicy;Z)V
+	public synthetic fun <init> (ILcom/neuralsound/audio/player/FocusPolicy;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()Lcom/neuralsound/audio/player/FocusPolicy;
+	public final fun component3 ()Z
+	public final fun copy (ILcom/neuralsound/audio/player/FocusPolicy;Z)Lcom/neuralsound/audio/player/PlayerOptions;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlayerOptions;ILcom/neuralsound/audio/player/FocusPolicy;ZILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFocus ()Lcom/neuralsound/audio/player/FocusPolicy;
+	public final fun getMaxTracks ()I
+	public final fun getPauseOnNoisy ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerOptions$Companion {
+}
+
+public final class com/neuralsound/audio/player/PlayerSnapshot {
+	public fun <init> (Lcom/neuralsound/audio/player/PlayerSource;JZ)V
+	public final fun component1 ()Lcom/neuralsound/audio/player/PlayerSource;
+	public final fun component2 ()J
+	public final fun component3 ()Z
+	public final fun copy (Lcom/neuralsound/audio/player/PlayerSource;JZ)Lcom/neuralsound/audio/player/PlayerSnapshot;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlayerSnapshot;Lcom/neuralsound/audio/player/PlayerSource;JZILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerSnapshot;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPositionMs ()J
+	public final fun getSource ()Lcom/neuralsound/audio/player/PlayerSource;
+	public final fun getWasPlaying ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerSource {
+	public fun <init> (Ljava/util/List;Landroid/net/Uri;JLcom/neuralsound/audio/player/PlaybackRange;ZLcom/neuralsound/audio/player/PitchTempo;Z)V
+	public synthetic fun <init> (Ljava/util/List;Landroid/net/Uri;JLcom/neuralsound/audio/player/PlaybackRange;ZLcom/neuralsound/audio/player/PitchTempo;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Landroid/net/Uri;
+	public final fun component3 ()J
+	public final fun component4 ()Lcom/neuralsound/audio/player/PlaybackRange;
+	public final fun component5 ()Z
+	public final fun component6 ()Lcom/neuralsound/audio/player/PitchTempo;
+	public final fun component7 ()Z
+	public final fun copy (Ljava/util/List;Landroid/net/Uri;JLcom/neuralsound/audio/player/PlaybackRange;ZLcom/neuralsound/audio/player/PitchTempo;Z)Lcom/neuralsound/audio/player/PlayerSource;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlayerSource;Ljava/util/List;Landroid/net/Uri;JLcom/neuralsound/audio/player/PlaybackRange;ZLcom/neuralsound/audio/player/PitchTempo;ZILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerSource;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAutoPlay ()Z
+	public final fun getLoop ()Z
+	public final fun getPitchTempo ()Lcom/neuralsound/audio/player/PitchTempo;
+	public final fun getRange ()Lcom/neuralsound/audio/player/PlaybackRange;
+	public final fun getStartAtMs ()J
+	public final fun getTracks ()Ljava/util/List;
+	public final fun getVideoUri ()Landroid/net/Uri;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerState {
+	public fun <init> ()V
+	public fun <init> (Lcom/neuralsound/audio/player/PlayerStatus;JJLjava/util/Map;Lcom/neuralsound/audio/player/PitchTempo;Lcom/neuralsound/audio/player/PlaybackRange;ZLcom/neuralsound/audio/player/AudioRoute;Lcom/neuralsound/audio/player/VideoState;Lcom/neuralsound/audio/AudioError;)V
+	public synthetic fun <init> (Lcom/neuralsound/audio/player/PlayerStatus;JJLjava/util/Map;Lcom/neuralsound/audio/player/PitchTempo;Lcom/neuralsound/audio/player/PlaybackRange;ZLcom/neuralsound/audio/player/AudioRoute;Lcom/neuralsound/audio/player/VideoState;Lcom/neuralsound/audio/AudioError;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/neuralsound/audio/player/PlayerStatus;
+	public final fun component10 ()Lcom/neuralsound/audio/AudioError;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/util/Map;
+	public final fun component5 ()Lcom/neuralsound/audio/player/PitchTempo;
+	public final fun component6 ()Lcom/neuralsound/audio/player/PlaybackRange;
+	public final fun component7 ()Z
+	public final fun component8 ()Lcom/neuralsound/audio/player/AudioRoute;
+	public final fun component9 ()Lcom/neuralsound/audio/player/VideoState;
+	public final fun copy (Lcom/neuralsound/audio/player/PlayerStatus;JJLjava/util/Map;Lcom/neuralsound/audio/player/PitchTempo;Lcom/neuralsound/audio/player/PlaybackRange;ZLcom/neuralsound/audio/player/AudioRoute;Lcom/neuralsound/audio/player/VideoState;Lcom/neuralsound/audio/AudioError;)Lcom/neuralsound/audio/player/PlayerState;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlayerState;Lcom/neuralsound/audio/player/PlayerStatus;JJLjava/util/Map;Lcom/neuralsound/audio/player/PitchTempo;Lcom/neuralsound/audio/player/PlaybackRange;ZLcom/neuralsound/audio/player/AudioRoute;Lcom/neuralsound/audio/player/VideoState;Lcom/neuralsound/audio/AudioError;ILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMs ()J
+	public final fun getError ()Lcom/neuralsound/audio/AudioError;
+	public final fun getLoop ()Z
+	public final fun getPitchTempo ()Lcom/neuralsound/audio/player/PitchTempo;
+	public final fun getPositionMs ()J
+	public final fun getProgress ()F
+	public final fun getRange ()Lcom/neuralsound/audio/player/PlaybackRange;
+	public final fun getRoute ()Lcom/neuralsound/audio/player/AudioRoute;
+	public final fun getStatus ()Lcom/neuralsound/audio/player/PlayerStatus;
+	public final fun getTracks ()Ljava/util/Map;
+	public final fun getVideo ()Lcom/neuralsound/audio/player/VideoState;
+	public fun hashCode ()I
+	public final fun isPlaying ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerStatus : java/lang/Enum {
+	public static final field ENDED Lcom/neuralsound/audio/player/PlayerStatus;
+	public static final field FAILED Lcom/neuralsound/audio/player/PlayerStatus;
+	public static final field IDLE Lcom/neuralsound/audio/player/PlayerStatus;
+	public static final field LOADING Lcom/neuralsound/audio/player/PlayerStatus;
+	public static final field PAUSED Lcom/neuralsound/audio/player/PlayerStatus;
+	public static final field PLAYING Lcom/neuralsound/audio/player/PlayerStatus;
+	public static final field READY Lcom/neuralsound/audio/player/PlayerStatus;
+	public static final field RELEASED Lcom/neuralsound/audio/player/PlayerStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/player/PlayerStatus;
+	public static fun values ()[Lcom/neuralsound/audio/player/PlayerStatus;
+}
+
+public final class com/neuralsound/audio/player/RouteKind : java/lang/Enum {
+	public static final field BLUETOOTH Lcom/neuralsound/audio/player/RouteKind;
+	public static final field OTHER Lcom/neuralsound/audio/player/RouteKind;
+	public static final field SPEAKER Lcom/neuralsound/audio/player/RouteKind;
+	public static final field UNKNOWN Lcom/neuralsound/audio/player/RouteKind;
+	public static final field USB Lcom/neuralsound/audio/player/RouteKind;
+	public static final field WIRED Lcom/neuralsound/audio/player/RouteKind;
+	public final fun getAllowsMonitoring ()Z
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/player/RouteKind;
+	public static fun values ()[Lcom/neuralsound/audio/player/RouteKind;
+}
+
+public final class com/neuralsound/audio/player/Track {
+	public synthetic fun <init> (Ljava/lang/String;Landroid/net/Uri;Lcom/neuralsound/audio/player/TrackSettings;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Landroid/net/Uri;Lcom/neuralsound/audio/player/TrackSettings;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-k1C3Psg ()Ljava/lang/String;
+	public final fun component2 ()Landroid/net/Uri;
+	public final fun component3 ()Lcom/neuralsound/audio/player/TrackSettings;
+	public final fun copy-3yO6Z5c (Ljava/lang/String;Landroid/net/Uri;Lcom/neuralsound/audio/player/TrackSettings;)Lcom/neuralsound/audio/player/Track;
+	public static synthetic fun copy-3yO6Z5c$default (Lcom/neuralsound/audio/player/Track;Ljava/lang/String;Landroid/net/Uri;Lcom/neuralsound/audio/player/TrackSettings;ILjava/lang/Object;)Lcom/neuralsound/audio/player/Track;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId-k1C3Psg ()Ljava/lang/String;
+	public final fun getSettings ()Lcom/neuralsound/audio/player/TrackSettings;
+	public final fun getUri ()Landroid/net/Uri;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/TrackSettings {
+	public static final field Companion Lcom/neuralsound/audio/player/TrackSettings$Companion;
+	public static final field MAX_BOOST_DB I
+	public static final field MAX_OFFSET_MS J
+	public static final field MIN_BOOST_DB I
+	public static final field MIN_OFFSET_MS J
+	public fun <init> ()V
+	public fun <init> (FZLcom/neuralsound/audio/player/ChannelGain;JI)V
+	public synthetic fun <init> (FZLcom/neuralsound/audio/player/ChannelGain;JIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun clamped ()Lcom/neuralsound/audio/player/TrackSettings;
+	public final fun component1 ()F
+	public final fun component2 ()Z
+	public final fun component3 ()Lcom/neuralsound/audio/player/ChannelGain;
+	public final fun component4 ()J
+	public final fun component5 ()I
+	public final fun copy (FZLcom/neuralsound/audio/player/ChannelGain;JI)Lcom/neuralsound/audio/player/TrackSettings;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/TrackSettings;FZLcom/neuralsound/audio/player/ChannelGain;JIILjava/lang/Object;)Lcom/neuralsound/audio/player/TrackSettings;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBalance ()Lcom/neuralsound/audio/player/ChannelGain;
+	public final fun getBoostDb ()I
+	public final fun getMuted ()Z
+	public final fun getOffsetMs ()J
+	public final fun getVolume ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/TrackSettings$Companion {
+}
+
+public final class com/neuralsound/audio/player/TrackState {
+	public fun <init> (Lcom/neuralsound/audio/player/TrackSettings;Lcom/neuralsound/audio/TrackFailureReason;)V
+	public synthetic fun <init> (Lcom/neuralsound/audio/player/TrackSettings;Lcom/neuralsound/audio/TrackFailureReason;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/neuralsound/audio/player/TrackSettings;
+	public final fun component2 ()Lcom/neuralsound/audio/TrackFailureReason;
+	public final fun copy (Lcom/neuralsound/audio/player/TrackSettings;Lcom/neuralsound/audio/TrackFailureReason;)Lcom/neuralsound/audio/player/TrackState;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/TrackState;Lcom/neuralsound/audio/player/TrackSettings;Lcom/neuralsound/audio/TrackFailureReason;ILjava/lang/Object;)Lcom/neuralsound/audio/player/TrackState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFailure ()Lcom/neuralsound/audio/TrackFailureReason;
+	public final fun getSettings ()Lcom/neuralsound/audio/player/TrackSettings;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/neuralsound/audio/player/VideoController {
+	public abstract fun attachPresentation ()V
+	public abstract fun detachPresentation ()V
+	public abstract fun notifySurfaceRecreated ()V
+	public abstract fun suspendPresentation ()V
+}
+
+public final class com/neuralsound/audio/player/VideoState {
+	public fun <init> ()V
+	public fun <init> (Landroidx/media3/common/Player;ZZLjava/lang/Float;JLcom/neuralsound/audio/player/VideoSyncStats;)V
+	public synthetic fun <init> (Landroidx/media3/common/Player;ZZLjava/lang/Float;JLcom/neuralsound/audio/player/VideoSyncStats;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Landroidx/media3/common/Player;
+	public final fun component2 ()Z
+	public final fun component3 ()Z
+	public final fun component4 ()Ljava/lang/Float;
+	public final fun component5 ()J
+	public final fun component6 ()Lcom/neuralsound/audio/player/VideoSyncStats;
+	public final fun copy (Landroidx/media3/common/Player;ZZLjava/lang/Float;JLcom/neuralsound/audio/player/VideoSyncStats;)Lcom/neuralsound/audio/player/VideoState;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/VideoState;Landroidx/media3/common/Player;ZZLjava/lang/Float;JLcom/neuralsound/audio/player/VideoSyncStats;ILjava/lang/Object;)Lcom/neuralsound/audio/player/VideoState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAspectRatio ()Ljava/lang/Float;
+	public final fun getFirstFrameReady ()Z
+	public final fun getHasVideo ()Z
+	public final fun getPlayer ()Landroidx/media3/common/Player;
+	public final fun getRevision ()J
+	public final fun getSync ()Lcom/neuralsound/audio/player/VideoSyncStats;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/VideoSyncStats {
+	public fun <init> ()V
+	public fun <init> (JJ)V
+	public synthetic fun <init> (JJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Lcom/neuralsound/audio/player/VideoSyncStats;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/VideoSyncStats;JJILjava/lang/Object;)Lcom/neuralsound/audio/player/VideoSyncStats;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHardCorrections ()J
+	public final fun getLastDriftMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/MicMeter {
+	public fun <init> ()V
+	public fun <init> (FFZ)V
+	public synthetic fun <init> (FFZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()Z
+	public final fun copy (FFZ)Lcom/neuralsound/audio/recorder/MicMeter;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/MicMeter;FFZILjava/lang/Object;)Lcom/neuralsound/audio/recorder/MicMeter;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClipping ()Z
+	public final fun getPeak ()F
+	public final fun getRms ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/neuralsound/audio/recorder/Recorder {
+	public static final field Companion Lcom/neuralsound/audio/recorder/Recorder$Companion;
+	public static final field SAMPLE_RATE I
+	public abstract fun closeMic (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun framesForMs (J)J
+	public abstract fun getEvents ()Lkotlinx/coroutines/flow/Flow;
+	public abstract fun getMeter ()Lkotlinx/coroutines/flow/StateFlow;
+	public abstract fun getState ()Lkotlinx/coroutines/flow/StateFlow;
+	public static fun msForFrames (J)J
+	public abstract fun openMic (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun record (Lcom/neuralsound/audio/recorder/TakeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun release (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/neuralsound/audio/recorder/Recorder$Companion {
+	public static final field SAMPLE_RATE I
+	public final fun framesForMs (J)J
+	public final fun msForFrames (J)J
+}
+
+public abstract interface class com/neuralsound/audio/recorder/RecorderEvent {
+}
+
+public final class com/neuralsound/audio/recorder/RecorderEvent$Failed : com/neuralsound/audio/recorder/RecorderEvent {
+	public fun <init> (Lcom/neuralsound/audio/AudioError;)V
+	public final fun component1 ()Lcom/neuralsound/audio/AudioError;
+	public final fun copy (Lcom/neuralsound/audio/AudioError;)Lcom/neuralsound/audio/recorder/RecorderEvent$Failed;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/RecorderEvent$Failed;Lcom/neuralsound/audio/AudioError;ILjava/lang/Object;)Lcom/neuralsound/audio/recorder/RecorderEvent$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Lcom/neuralsound/audio/AudioError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/RecorderEvent$InputLost : com/neuralsound/audio/recorder/RecorderEvent {
+	public fun <init> (Lcom/neuralsound/audio/recorder/TakeResult;)V
+	public final fun component1 ()Lcom/neuralsound/audio/recorder/TakeResult;
+	public final fun copy (Lcom/neuralsound/audio/recorder/TakeResult;)Lcom/neuralsound/audio/recorder/RecorderEvent$InputLost;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/RecorderEvent$InputLost;Lcom/neuralsound/audio/recorder/TakeResult;ILjava/lang/Object;)Lcom/neuralsound/audio/recorder/RecorderEvent$InputLost;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPartial ()Lcom/neuralsound/audio/recorder/TakeResult;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/RecorderEvent$TakeFinished : com/neuralsound/audio/recorder/RecorderEvent {
+	public fun <init> (Lcom/neuralsound/audio/recorder/TakeResult;)V
+	public final fun component1 ()Lcom/neuralsound/audio/recorder/TakeResult;
+	public final fun copy (Lcom/neuralsound/audio/recorder/TakeResult;)Lcom/neuralsound/audio/recorder/RecorderEvent$TakeFinished;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/RecorderEvent$TakeFinished;Lcom/neuralsound/audio/recorder/TakeResult;ILjava/lang/Object;)Lcom/neuralsound/audio/recorder/RecorderEvent$TakeFinished;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getResult ()Lcom/neuralsound/audio/recorder/TakeResult;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/RecorderHealth {
+	public fun <init> ()V
+	public fun <init> (ZZLjava/lang/Integer;J)V
+	public synthetic fun <init> (ZZLjava/lang/Integer;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Z
+	public final fun component3 ()Ljava/lang/Integer;
+	public final fun component4 ()J
+	public final fun copy (ZZLjava/lang/Integer;J)Lcom/neuralsound/audio/recorder/RecorderHealth;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/RecorderHealth;ZZLjava/lang/Integer;JILjava/lang/Object;)Lcom/neuralsound/audio/recorder/RecorderHealth;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeviceSampleRate ()Ljava/lang/Integer;
+	public final fun getOverflowCount ()J
+	public final fun getStreamOpen ()Z
+	public final fun getWriterAlive ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/RecorderState {
+	public fun <init> ()V
+	public fun <init> (Lcom/neuralsound/audio/recorder/RecorderStatus;Lcom/neuralsound/audio/recorder/RecorderHealth;Lcom/neuralsound/audio/AudioError;)V
+	public synthetic fun <init> (Lcom/neuralsound/audio/recorder/RecorderStatus;Lcom/neuralsound/audio/recorder/RecorderHealth;Lcom/neuralsound/audio/AudioError;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public final fun component2 ()Lcom/neuralsound/audio/recorder/RecorderHealth;
+	public final fun component3 ()Lcom/neuralsound/audio/AudioError;
+	public final fun copy (Lcom/neuralsound/audio/recorder/RecorderStatus;Lcom/neuralsound/audio/recorder/RecorderHealth;Lcom/neuralsound/audio/AudioError;)Lcom/neuralsound/audio/recorder/RecorderState;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/RecorderState;Lcom/neuralsound/audio/recorder/RecorderStatus;Lcom/neuralsound/audio/recorder/RecorderHealth;Lcom/neuralsound/audio/AudioError;ILjava/lang/Object;)Lcom/neuralsound/audio/recorder/RecorderState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Lcom/neuralsound/audio/AudioError;
+	public final fun getHealth ()Lcom/neuralsound/audio/recorder/RecorderHealth;
+	public final fun getStatus ()Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public fun hashCode ()I
+	public final fun isMicOpen ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/RecorderStatus : java/lang/Enum {
+	public static final field FAILED Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public static final field IDLE Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public static final field MIC_OPEN Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public static final field PAUSED Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public static final field RECORDING Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public static final field RELEASED Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public static final field UNAVAILABLE Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/recorder/RecorderStatus;
+	public static fun values ()[Lcom/neuralsound/audio/recorder/RecorderStatus;
+}
+
+public abstract interface class com/neuralsound/audio/recorder/Take {
+	public abstract fun getFile ()Ljava/io/File;
+	public abstract fun getWaveform ()Lkotlinx/coroutines/flow/Flow;
+	public abstract fun getWrittenFrames ()Lkotlinx/coroutines/flow/StateFlow;
+	public abstract fun pause ()Lcom/neuralsound/audio/AudioResult;
+	public abstract fun resume ()Lcom/neuralsound/audio/AudioResult;
+	public abstract fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/neuralsound/audio/recorder/TakeMode : java/lang/Enum {
+	public static final field NEW Lcom/neuralsound/audio/recorder/TakeMode;
+	public static final field PUNCH_IN Lcom/neuralsound/audio/recorder/TakeMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/recorder/TakeMode;
+	public static fun values ()[Lcom/neuralsound/audio/recorder/TakeMode;
+}
+
+public final class com/neuralsound/audio/recorder/TakeRequest {
+	public fun <init> (Ljava/io/File;JLcom/neuralsound/audio/recorder/TakeMode;Z)V
+	public synthetic fun <init> (Ljava/io/File;JLcom/neuralsound/audio/recorder/TakeMode;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/io/File;
+	public final fun component2 ()J
+	public final fun component3 ()Lcom/neuralsound/audio/recorder/TakeMode;
+	public final fun component4 ()Z
+	public final fun copy (Ljava/io/File;JLcom/neuralsound/audio/recorder/TakeMode;Z)Lcom/neuralsound/audio/recorder/TakeRequest;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/TakeRequest;Ljava/io/File;JLcom/neuralsound/audio/recorder/TakeMode;ZILjava/lang/Object;)Lcom/neuralsound/audio/recorder/TakeRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFile ()Ljava/io/File;
+	public final fun getMode ()Lcom/neuralsound/audio/recorder/TakeMode;
+	public final fun getSaturation ()Z
+	public final fun getStartFrame ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/TakeResult {
+	public fun <init> (Ljava/io/File;JJJ)V
+	public final fun component1 ()Ljava/io/File;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun copy (Ljava/io/File;JJJ)Lcom/neuralsound/audio/recorder/TakeResult;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/TakeResult;Ljava/io/File;JJJILjava/lang/Object;)Lcom/neuralsound/audio/recorder/TakeResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFile ()Ljava/io/File;
+	public final fun getFileDurationMs ()J
+	public final fun getFrames ()J
+	public final fun getStartFrame ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/WaveformBuckets {
+	public static final field BUCKET_MS I
+	public static final field Companion Lcom/neuralsound/audio/recorder/WaveformBuckets$Companion;
+	public fun <init> (I[F)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFirstIndex ()I
+	public final fun getRms ()[F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/WaveformBuckets$Companion {
+}
+
+public final class com/neuralsound/audio/waveform/Waveform {
+	public fun <init> ([FI)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAlgorithmVersion ()I
+	public final fun getLevels ()[F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/neuralsound/audio/waveform/WaveformAnalyzer {
+	public static final field Companion Lcom/neuralsound/audio/waveform/WaveformAnalyzer$Companion;
+	public static final field MAX_LEVELS I
+	public abstract fun analyze (Landroid/os/ParcelFileDescriptor;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun getAlgorithmVersion ()I
+}
+
+public final class com/neuralsound/audio/waveform/WaveformAnalyzer$Companion {
+	public static final field MAX_LEVELS I
+}
+
+public final class com/neuralsound/audio/waveform/WaveformAnalyzer$DefaultImpls {
+	public static synthetic fun analyze$default (Lcom/neuralsound/audio/waveform/WaveformAnalyzer;Landroid/os/ParcelFileDescriptor;ILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+

@@ -15,12 +15,12 @@ import androidx.core.content.ContextCompat
 import androidx.media.AudioAttributesCompat
 import androidx.media.AudioFocusRequestCompat
 import androidx.media.AudioManagerCompat
-import com.neuralsound.audio.AudioFailure
-import com.neuralsound.audio.ChannelGain
-import com.neuralsound.audio.MixerTrackState as PublicMixerTrackState
-import com.neuralsound.audio.PlaybackEffects
-import com.neuralsound.audio.PlaybackRange
-import com.neuralsound.audio.TrackMix
+import com.neuralsound.audio.internal.legacy.AudioFailure
+import com.neuralsound.audio.internal.legacy.ChannelGain
+import com.neuralsound.audio.internal.legacy.MixerTrackState as PublicMixerTrackState
+import com.neuralsound.audio.internal.legacy.PlaybackEffects
+import com.neuralsound.audio.internal.legacy.PlaybackRange
+import com.neuralsound.audio.internal.legacy.TrackMix
 import com.neuralsound.audio.TrackId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

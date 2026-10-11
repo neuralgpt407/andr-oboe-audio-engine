@@ -1,15 +1,15 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.FramePreciseRecorderSession
-import com.neuralsound.audio.FrameRecordingRequest
-import com.neuralsound.audio.RecorderError
-import com.neuralsound.audio.RecorderFailure
-import com.neuralsound.audio.RecorderOperationResult
-import com.neuralsound.audio.RecorderState
-import com.neuralsound.audio.RecorderStatus
-import com.neuralsound.audio.RecorderTelemetry
-import com.neuralsound.audio.RecordingRequest
-import com.neuralsound.audio.RecordingResult
+import com.neuralsound.audio.internal.legacy.FramePreciseRecorderSession
+import com.neuralsound.audio.internal.legacy.FrameRecordingRequest
+import com.neuralsound.audio.internal.legacy.RecorderError
+import com.neuralsound.audio.internal.legacy.RecorderFailure
+import com.neuralsound.audio.internal.legacy.RecorderOperationResult
+import com.neuralsound.audio.internal.legacy.RecorderState
+import com.neuralsound.audio.internal.legacy.RecorderStatus
+import com.neuralsound.audio.internal.legacy.RecorderTelemetry
+import com.neuralsound.audio.internal.legacy.RecordingRequest
+import com.neuralsound.audio.internal.legacy.RecordingResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

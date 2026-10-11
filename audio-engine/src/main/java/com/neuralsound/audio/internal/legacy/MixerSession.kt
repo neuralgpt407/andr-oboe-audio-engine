@@ -1,8 +1,10 @@
-package com.neuralsound.audio
+package com.neuralsound.audio.internal.legacy
+
+import com.neuralsound.audio.TrackId
 
 import kotlinx.coroutines.flow.StateFlow
 
-interface MixerSession : AutoCloseable {
+internal interface MixerSession : AutoCloseable {
     val state: StateFlow<MixerState>
 
     suspend fun prepare(request: MixerRequest): AudioResult

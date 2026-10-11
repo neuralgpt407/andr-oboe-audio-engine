@@ -7,10 +7,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import com.neuralsound.audio.AudioFailure
-import com.neuralsound.audio.AudioResult
-import com.neuralsound.audio.MixerSession
-import com.neuralsound.audio.MixerState
+import com.neuralsound.audio.internal.legacy.AudioFailure
+import com.neuralsound.audio.internal.legacy.AudioResult
+import com.neuralsound.audio.internal.legacy.MixerSession
+import com.neuralsound.audio.internal.legacy.MixerState
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

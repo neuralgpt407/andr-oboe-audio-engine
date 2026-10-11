@@ -1,4 +1,6 @@
-package com.neuralsound.audio
+package com.neuralsound.audio.internal.legacy
+
+import com.neuralsound.audio.TrackId
 
 import android.os.ParcelFileDescriptor
 import com.neuralsound.audio.internal.JniNativeWaveformBridge
@@ -6,7 +8,7 @@ import com.neuralsound.audio.internal.OboeRecorderNativeLibrary
 import com.neuralsound.audio.internal.WaveformAnalyzerRuntime
 import kotlinx.coroutines.Dispatchers
 
-sealed interface NativeWaveformAnalysisResult {
+internal sealed interface NativeWaveformAnalysisResult {
     class Success(val levels: FloatArray) : NativeWaveformAnalysisResult
 
     data class Failure(
@@ -14,7 +16,7 @@ sealed interface NativeWaveformAnalysisResult {
     ) : NativeWaveformAnalysisResult
 }
 
-enum class NativeWaveformAnalysisError {
+internal enum class NativeWaveformAnalysisError {
     Unreadable,
     Unsupported,
     Corrupt,
@@ -33,7 +35,7 @@ enum class NativeWaveformAnalysisError {
  * descriptor, and coroutine cancellation is forwarded to the native decode
  * loop before the analyzer handle is released.
  */
-class NativeAudioWaveformAnalyzer {
+internal class NativeAudioWaveformAnalyzer {
     private val runtime = WaveformAnalyzerRuntime(
         dispatcher = Dispatchers.IO,
         nativeBridge = JniNativeWaveformBridge,

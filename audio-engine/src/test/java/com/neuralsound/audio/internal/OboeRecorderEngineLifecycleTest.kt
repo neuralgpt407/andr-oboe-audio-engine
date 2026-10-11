@@ -1,10 +1,10 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.FrameRecordingRequest
-import com.neuralsound.audio.RecorderError
-import com.neuralsound.audio.RecorderStatus
-import com.neuralsound.audio.RecorderTelemetry
-import com.neuralsound.audio.RecordingRequest
+import com.neuralsound.audio.internal.legacy.FrameRecordingRequest
+import com.neuralsound.audio.internal.legacy.RecorderError
+import com.neuralsound.audio.internal.legacy.RecorderStatus
+import com.neuralsound.audio.internal.legacy.RecorderTelemetry
+import com.neuralsound.audio.internal.legacy.RecordingRequest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking

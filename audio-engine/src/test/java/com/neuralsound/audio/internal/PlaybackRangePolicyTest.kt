@@ -1,6 +1,6 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.PlaybackRange
+import com.neuralsound.audio.internal.legacy.PlaybackRange
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

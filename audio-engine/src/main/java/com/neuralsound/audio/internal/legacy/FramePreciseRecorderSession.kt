@@ -1,8 +1,10 @@
-package com.neuralsound.audio
+package com.neuralsound.audio.internal.legacy
+
+import com.neuralsound.audio.TrackId
 
 import kotlinx.coroutines.flow.StateFlow
 
-interface FramePreciseRecorderSession : RecorderSession {
+internal interface FramePreciseRecorderSession : RecorderSession {
     val state: StateFlow<RecorderState>
     val currentFailure: StateFlow<RecorderFailure?>
 

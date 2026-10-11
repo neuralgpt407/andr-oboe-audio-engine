@@ -1,25 +1,40 @@
 package com.neuralsound.audio
 
 import android.content.Context
-import com.neuralsound.audio.internal.DefaultMixerSession
 import com.neuralsound.audio.internal.NativeMixerController
-import com.neuralsound.audio.internal.NativeRecorderSession
+import com.neuralsound.audio.player.Player
+import com.neuralsound.audio.player.PlayerOptions
+import com.neuralsound.audio.recorder.Recorder
+import com.neuralsound.audio.waveform.WaveformAnalyzer
 
-class AudioEngine(context: Context) {
-    private val applicationContext = context.applicationContext
+/**
+ * Entry point of the SDK. Create one per process (for example in your DI graph) and ask it
+ * for a [Player] per screen, a [Recorder] per recording flow, and the shared [waveforms]
+ * analyzer.
+ */
+class AudioEngine private constructor(context: Context) {
+    private val applicationContext: Context = context.applicationContext
 
-    val isNativeAvailable: Boolean
+    /** False when the native library could not be loaded; every session call then fails with [AudioError.Unavailable]. */
+    val isAvailable: Boolean
         get() = NativeMixerController.nativeLibraryAvailable
 
-    fun createMixerSession(): MixerSession {
-        return DefaultMixerSession(NativeMixerController(applicationContext))
+    /** Creates an independent player. Release it with [Player.release] when the owner goes away. */
+    fun newPlayer(options: PlayerOptions = PlayerOptions()): Player {
+        TODO("Implemented in FEAT-0001 Task 6")
     }
 
-    fun createRecorderSession(): RecorderSession {
-        return NativeRecorderSession()
+    /** Creates an independent recorder. Release it with [Recorder.release] when the owner goes away. */
+    fun newRecorder(): Recorder {
+        TODO("Implemented in FEAT-0001 Task 21")
     }
 
-    fun createFramePreciseRecorderSession(): FramePreciseRecorderSession {
-        return NativeRecorderSession()
+    /** Offline file waveform analysis. */
+    val waveforms: WaveformAnalyzer
+        get() = TODO("Implemented in FEAT-0001 Task 10")
+
+    companion object {
+        @JvmStatic
+        fun create(context: Context): AudioEngine = AudioEngine(context)
     }
 }

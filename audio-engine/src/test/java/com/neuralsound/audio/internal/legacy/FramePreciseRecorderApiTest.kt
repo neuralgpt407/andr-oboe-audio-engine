@@ -1,4 +1,6 @@
-package com.neuralsound.audio
+package com.neuralsound.audio.internal.legacy
+
+import com.neuralsound.audio.TrackId
 
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -35,10 +37,10 @@ class FramePreciseRecorderApiTest {
             },
         )
 
-        val factory = AudioEngine::class.java.getDeclaredMethod("createFramePreciseRecorderSession")
+        val factory = LegacyAudioEngine::class.java.getDeclaredMethod("createFramePreciseRecorderSession")
         assertEquals(FramePreciseRecorderSession::class.java, factory.returnType)
 
-        val legacyFactory = AudioEngine::class.java.getDeclaredMethod("createRecorderSession")
+        val legacyFactory = LegacyAudioEngine::class.java.getDeclaredMethod("createRecorderSession")
         assertEquals(RecorderSession::class.java, legacyFactory.returnType)
         assertEquals(123L, RecordingRequest(File("legacy.wav"), startOffsetMs = 123L).startOffsetMs)
     }

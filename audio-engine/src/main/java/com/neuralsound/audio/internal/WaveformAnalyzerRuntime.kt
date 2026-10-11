@@ -1,8 +1,8 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.NativeAudioWaveformAnalyzer
-import com.neuralsound.audio.NativeWaveformAnalysisError
-import com.neuralsound.audio.NativeWaveformAnalysisResult
+import com.neuralsound.audio.internal.legacy.NativeAudioWaveformAnalyzer
+import com.neuralsound.audio.internal.legacy.NativeWaveformAnalysisError
+import com.neuralsound.audio.internal.legacy.NativeWaveformAnalysisResult
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineDispatcher

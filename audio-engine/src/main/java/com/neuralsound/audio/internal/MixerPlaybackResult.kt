@@ -1,6 +1,6 @@
 package com.neuralsound.audio.internal
 
-sealed interface MixerPlaybackResult {
+internal sealed interface MixerPlaybackResult {
     data object Success : MixerPlaybackResult
 
     data class Failure(
@@ -8,7 +8,7 @@ sealed interface MixerPlaybackResult {
     ) : MixerPlaybackResult
 }
 
-enum class MixerPlaybackFailureReason {
+internal enum class MixerPlaybackFailureReason {
     NOT_PREPARED,
     ENGINE_INACTIVE,
     NATIVE_START_FAILED,

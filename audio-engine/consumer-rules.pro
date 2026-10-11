@@ -9,4 +9,4 @@
 -keepclasseswithmembernames,includedescriptorclasses class com.neuralsound.audio.internal.JniNativeWaveformBridge {
     native <methods>;
 }
--keep class com.neuralsound.audio.RecorderTelemetry { *; }
+-keep class com.neuralsound.audio.internal.legacy.RecorderTelemetry { *; }

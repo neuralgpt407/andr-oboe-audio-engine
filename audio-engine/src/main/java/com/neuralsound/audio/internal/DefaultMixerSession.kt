@@ -1,17 +1,17 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.AudioFailure
-import com.neuralsound.audio.AudioResult
-import com.neuralsound.audio.AudioRoute
-import com.neuralsound.audio.MixerRequest
-import com.neuralsound.audio.MixerSession
-import com.neuralsound.audio.MixerState
-import com.neuralsound.audio.MixerStatus
-import com.neuralsound.audio.MixerTrack
-import com.neuralsound.audio.PlaybackEffects
-import com.neuralsound.audio.PlaybackRange
+import com.neuralsound.audio.internal.legacy.AudioFailure
+import com.neuralsound.audio.internal.legacy.AudioResult
+import com.neuralsound.audio.internal.legacy.AudioRoute
+import com.neuralsound.audio.internal.legacy.MixerRequest
+import com.neuralsound.audio.internal.legacy.MixerSession
+import com.neuralsound.audio.internal.legacy.MixerState
+import com.neuralsound.audio.internal.legacy.MixerStatus
+import com.neuralsound.audio.internal.legacy.MixerTrack
+import com.neuralsound.audio.internal.legacy.PlaybackEffects
+import com.neuralsound.audio.internal.legacy.PlaybackRange
 import com.neuralsound.audio.TrackId
-import com.neuralsound.audio.TrackMix
+import com.neuralsound.audio.internal.legacy.TrackMix
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -106,7 +106,7 @@ internal class DefaultMixerSession(
                     looping = request.looping,
                     effects = request.effects,
                     tracks = request.tracks.associate { track ->
-                        track.id to com.neuralsound.audio.MixerTrackState(track.mix, track.offsetMs)
+                        track.id to com.neuralsound.audio.internal.legacy.MixerTrackState(track.mix, track.offsetMs)
                     },
                 )
             }

@@ -1,8 +1,10 @@
-package com.neuralsound.audio
+package com.neuralsound.audio.internal.legacy
+
+import com.neuralsound.audio.TrackId
 
 import android.net.Uri
 
-data class ChannelGain(
+internal data class ChannelGain(
     val left: Float = 1f,
     val right: Float = 1f,
 ) {
@@ -20,7 +22,7 @@ data class ChannelGain(
     }
 }
 
-data class TrackMix(
+internal data class TrackMix(
     val volume: Float = 0.8f,
     val muted: Boolean = false,
     val channelGain: ChannelGain = ChannelGain.Center,
@@ -30,14 +32,14 @@ data class TrackMix(
     }
 }
 
-data class MixerTrack(
+internal data class MixerTrack(
     val id: TrackId,
     val uri: Uri,
     val mix: TrackMix = TrackMix(),
     val offsetMs: Long = 0L,
 )
 
-data class PlaybackRange(
+internal data class PlaybackRange(
     val startMs: Long,
     val endMs: Long,
 ) {
@@ -54,7 +56,7 @@ data class PlaybackRange(
     }
 }
 
-data class PlaybackEffects(
+internal data class PlaybackEffects(
     val tempo: Float = DEFAULT_TEMPO,
     val pitchSemitones: Int = DEFAULT_PITCH_SEMITONES,
 ) {
@@ -75,7 +77,7 @@ data class PlaybackEffects(
     }
 }
 
-data class MixerRequest(
+internal data class MixerRequest(
     val tracks: List<MixerTrack>,
     val startPositionMs: Long = 0L,
     val playbackRange: PlaybackRange? = null,
@@ -92,18 +94,18 @@ data class MixerRequest(
     }
 }
 
-data class MixerTrackState(
+internal data class MixerTrackState(
     val mix: TrackMix,
     val offsetMs: Long,
 )
 
-data class AudioRoute(
+internal data class AudioRoute(
     val deviceId: Int?,
     val deviceType: Int?,
     val topologyRevision: Long,
 )
 
-enum class MixerStatus {
+internal enum class MixerStatus {
     IDLE,
     PREPARING,
     READY,
@@ -113,7 +115,7 @@ enum class MixerStatus {
     RELEASED,
 }
 
-data class MixerState(
+internal data class MixerState(
     val status: MixerStatus = MixerStatus.IDLE,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,

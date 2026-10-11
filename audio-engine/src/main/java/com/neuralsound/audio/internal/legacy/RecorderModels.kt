@@ -1,8 +1,10 @@
-package com.neuralsound.audio
+package com.neuralsound.audio.internal.legacy
+
+import com.neuralsound.audio.TrackId
 
 import java.io.File
 
-data class RecordingRequest(
+internal data class RecordingRequest(
     val outputFile: File,
     val startOffsetMs: Long = 0L,
 ) {
@@ -12,7 +14,7 @@ data class RecordingRequest(
     }
 }
 
-data class FrameRecordingRequest(
+internal data class FrameRecordingRequest(
     val outputFile: File,
     val startOffsetFrames: Long = 0L,
 ) {
@@ -22,7 +24,7 @@ data class FrameRecordingRequest(
     }
 }
 
-enum class RecorderStatus {
+internal enum class RecorderStatus {
     UNAVAILABLE,
     IDLE,
     MIC_SESSION_ACTIVE,
@@ -31,7 +33,7 @@ enum class RecorderStatus {
     RELEASED,
 }
 
-sealed interface RecorderError {
+internal sealed interface RecorderError {
     data object NativeUnavailable : RecorderError
     data object MicSessionOpenFailed : RecorderError
     data object StreamDisconnected : RecorderError
@@ -42,12 +44,12 @@ sealed interface RecorderError {
     data object InvalidState : RecorderError
 }
 
-data class RecorderFailure(
+internal data class RecorderFailure(
     val error: RecorderError,
     val message: String? = null,
 )
 
-data class RecorderState(
+internal data class RecorderState(
     val status: RecorderStatus,
     val currentFailure: RecorderFailure? = null,
 ) {
@@ -58,7 +60,7 @@ data class RecorderState(
     }
 }
 
-data class RecorderOperationResult(
+internal data class RecorderOperationResult(
     val error: RecorderError? = null,
     val message: String? = null,
 ) {
@@ -74,7 +76,7 @@ data class RecorderOperationResult(
     }
 }
 
-data class RecordingResult(
+internal data class RecordingResult(
     val file: File?,
     val durationMs: Long,
     val sampleRate: Int,
@@ -90,7 +92,7 @@ data class RecordingResult(
             acceptedFrames == writtenFrames
 }
 
-data class RecorderTelemetry(
+internal data class RecorderTelemetry(
     val takeId: Long,
     val sampleRate: Int,
     val acceptedFrames: Long,

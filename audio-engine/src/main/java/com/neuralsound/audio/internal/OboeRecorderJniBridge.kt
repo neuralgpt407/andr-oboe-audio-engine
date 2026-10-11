@@ -1,6 +1,6 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.RecorderTelemetry
+import com.neuralsound.audio.internal.legacy.RecorderTelemetry
 
 internal data class NativeRecordingResult(
     val durationMs: Long,

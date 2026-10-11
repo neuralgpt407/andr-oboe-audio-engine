@@ -1,9 +1,9 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.AudioFailure
+import com.neuralsound.audio.internal.legacy.AudioFailure
 import com.neuralsound.audio.TrackId
 
-sealed interface MixerPreparationResult {
+internal sealed interface MixerPreparationResult {
     data object Success : MixerPreparationResult
 
     data class Failure(

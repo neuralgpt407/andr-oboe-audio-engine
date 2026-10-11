@@ -1,6 +1,6 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.PlaybackRange
+import com.neuralsound.audio.internal.legacy.PlaybackRange
 
 internal object PlaybackRangePolicy {
     private const val COMPLETION_THRESHOLD_MS = 50L

@@ -1,7 +1,7 @@
 package com.neuralsound.audio.internal
 
 import android.net.Uri
-import com.neuralsound.audio.ChannelGain
+import com.neuralsound.audio.internal.legacy.ChannelGain
 import com.neuralsound.audio.TrackId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

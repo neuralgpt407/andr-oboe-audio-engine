@@ -1,11 +1,11 @@
 package com.neuralsound.audio.internal
 
 import android.net.Uri
-import com.neuralsound.audio.AudioFailure
-import com.neuralsound.audio.ChannelGain
-import com.neuralsound.audio.MixerTrackState
-import com.neuralsound.audio.PlaybackEffects
-import com.neuralsound.audio.PlaybackRange
+import com.neuralsound.audio.internal.legacy.AudioFailure
+import com.neuralsound.audio.internal.legacy.ChannelGain
+import com.neuralsound.audio.internal.legacy.MixerTrackState
+import com.neuralsound.audio.internal.legacy.PlaybackEffects
+import com.neuralsound.audio.internal.legacy.PlaybackRange
 import com.neuralsound.audio.TrackId
 import kotlinx.coroutines.flow.StateFlow
 

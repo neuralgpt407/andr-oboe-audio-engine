@@ -270,7 +270,7 @@ jobject nativeRecorderGetTelemetry(JNIEnv* env, jobject, jlong handle, jint last
         );
     }
     jclass clazz = env->FindClass(
-        "com/neuralsound/audio/RecorderTelemetry"
+        "com/neuralsound/audio/internal/legacy/RecorderTelemetry"
     );
     if (clazz == nullptr) return nullptr;
     jmethodID constructor = env->GetMethodID(clazz, "<init>", "(JIJJFI[FFI)V");
@@ -471,7 +471,7 @@ JNINativeMethod kRecorderMethods[] = {
     {"nativePauseWriting", "(J)V", reinterpret_cast<void*>(nativeRecorderPauseWriting)},
     {"nativeStopWriting", "(J)[J", reinterpret_cast<void*>(nativeRecorderStopWriting)},
     {"nativeGetMicPeak", "(J)F", reinterpret_cast<void*>(nativeRecorderGetMicPeak)},
-    {"nativeGetTelemetry", "(JI)Lcom/neuralsound/audio/RecorderTelemetry;", reinterpret_cast<void*>(nativeRecorderGetTelemetry)},
+    {"nativeGetTelemetry", "(JI)Lcom/neuralsound/audio/internal/legacy/RecorderTelemetry;", reinterpret_cast<void*>(nativeRecorderGetTelemetry)},
     {"nativeGetWrittenDurationMs", "(J)J", reinterpret_cast<void*>(nativeRecorderGetWrittenDurationMs)},
     {"nativeGetSampleRate", "(J)I", reinterpret_cast<void*>(nativeRecorderGetSampleRate)},
     {"nativeHasFailed", "(J)Z", reinterpret_cast<void*>(nativeRecorderHasFailed)},

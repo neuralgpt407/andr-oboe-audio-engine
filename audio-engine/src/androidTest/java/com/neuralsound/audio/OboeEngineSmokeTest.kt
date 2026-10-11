@@ -1,5 +1,7 @@
 package com.neuralsound.audio
 
+import com.neuralsound.audio.internal.legacy.*
+
 import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -31,7 +33,7 @@ class OboeEngineSmokeTest {
             sampleRate = 44_100,
             channelCount = 1,
         )
-        val mixer = AudioEngine(context).createMixerSession()
+        val mixer = LegacyAudioEngine(context).createMixerSession()
 
         try {
             assertEquals(
@@ -66,7 +68,7 @@ class OboeEngineSmokeTest {
             sampleRate = 44_100,
             channelCount = 1,
         )
-        val mixer = AudioEngine(context).createMixerSession()
+        val mixer = LegacyAudioEngine(context).createMixerSession()
         val originalId = TrackId("original")
         val vocalId = TrackId("vocal")
 

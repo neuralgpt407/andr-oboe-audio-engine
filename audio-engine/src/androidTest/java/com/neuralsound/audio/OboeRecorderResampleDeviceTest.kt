@@ -1,5 +1,7 @@
 package com.neuralsound.audio
 
+import com.neuralsound.audio.internal.legacy.*
+
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -30,7 +32,7 @@ class OboeRecorderResampleDeviceTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val outputFile = File(context.cacheDir, "oboe-recorder-resample-test.wav")
         outputFile.delete()
-        val recorder = AudioEngine(context).createRecorderSession()
+        val recorder = LegacyAudioEngine(context).createRecorderSession()
 
         try {
             assertEquals(RecorderStatus.IDLE, recorder.status.value)

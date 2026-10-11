@@ -1,6 +1,6 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.AudioFailure
+import com.neuralsound.audio.internal.legacy.AudioFailure
 import com.neuralsound.audio.TrackId
 import org.junit.Assert.assertEquals
 import org.junit.Test
