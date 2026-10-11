@@ -36,7 +36,10 @@ data class TrackSettings(
     val volume: Float = 1f,
     val muted: Boolean = false,
     val balance: ChannelGain = ChannelGain.Center,
-    /** Timeline offset; positive delays the track, negative starts it early. */
+    /**
+     * Read offset against the shared timeline. Positive reads the track ahead (it sounds
+     * earlier, e.g. compensating recording latency); negative delays it behind leading silence.
+     */
     val offsetMs: Long = 0L,
     /** Pre-mix gain in whole dB, [MIN_BOOST_DB]..[MAX_BOOST_DB]; the master limiter prevents clipping. */
     val boostDb: Int = 0,

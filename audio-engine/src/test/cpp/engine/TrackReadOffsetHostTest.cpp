@@ -89,6 +89,20 @@ int main() {
         "extreme negative offset does not read before source zero"
     );
 
+    // FEAT-0001 S1-AS4: the karaoke manual-sync range is +/-2000 ms (88 200 frames at 44.1 kHz).
+    constexpr int64_t kTwoSecondsFrames = 88'200;
+    const TrackReadWindow ahead = trackReadWindow(0, 1024, 10 * kTwoSecondsFrames, kTwoSecondsFrames);
+    require(ahead.leadingSilentFrames == 0 && ahead.sourceFrames == 1024,
+        "+2000 ms reads ahead with no leading silence");
+    require(trackSourceFrame(0, kTwoSecondsFrames) == kTwoSecondsFrames,
+        "+2000 ms starts reading 88200 frames into the source");
+    const TrackReadWindow delayedStart = trackReadWindow(0, 1024, 10 * kTwoSecondsFrames, -kTwoSecondsFrames);
+    require(delayedStart.leadingSilentFrames == 1024 && delayedStart.sourceFrames == 0,
+        "-2000 ms is fully silent at the timeline start");
+    const TrackReadWindow delayedEdge =
+        trackReadWindow(kTwoSecondsFrames - 100, 1024, 10 * kTwoSecondsFrames, -kTwoSecondsFrames);
+    require(delayedEdge.leadingSilentFrames == 100 && delayedEdge.sourceFrames == 924,
+        "-2000 ms switches from silence to source exactly at 88200 timeline frames");
     std::cout << "PASS: Track read offsets advance source and zero-fill boundaries\n";
     return 0;
 }

@@ -3,6 +3,7 @@ package com.neuralsound.audio
 import android.content.Context
 import com.neuralsound.audio.internal.NativeMixerController
 import com.neuralsound.audio.internal.player.DefaultPlayer
+import com.neuralsound.audio.internal.waveform.DefaultWaveformAnalyzer
 import com.neuralsound.audio.player.Player
 import com.neuralsound.audio.player.PlayerOptions
 import com.neuralsound.audio.recorder.Recorder
@@ -36,8 +37,7 @@ class AudioEngine private constructor(context: Context) {
     }
 
     /** Offline file waveform analysis. */
-    val waveforms: WaveformAnalyzer
-        get() = TODO("Implemented in FEAT-0001 Task 10")
+    val waveforms: WaveformAnalyzer by lazy { DefaultWaveformAnalyzer() }
 
     companion object {
         @JvmStatic

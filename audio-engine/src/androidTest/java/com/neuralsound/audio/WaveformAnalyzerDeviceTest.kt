@@ -1,7 +1,5 @@
 package com.neuralsound.audio
 
-import com.neuralsound.audio.internal.legacy.*
-
 import android.os.ParcelFileDescriptor
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -10,100 +8,70 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import com.neuralsound.audio.waveform.Waveform
+import com.neuralsound.audio.waveform.WaveformAnalyzer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class NativeAudioWaveformAnalyzerDeviceTest {
+class WaveformAnalyzerDeviceTest {
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val analyzer = AudioEngine.create(context).waveforms
+
     @Test
-    fun publicAnalyzerDecodesAndClassifiesDescriptorsWithRepeatCleanup() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
+    fun analyzerDecodesAndClassifiesDescriptorsWithRepeatCleanup() = runBlocking {
         val valid = writeSineWav(File(context.cacheDir, "waveform-valid.wav"))
         val malformed = File(context.cacheDir, "waveform-malformed.bin").apply {
             writeBytes(byteArrayOf(0x01, 0x23, 0x45, 0x67))
         }
-        val analyzer = NativeAudioWaveformAnalyzer()
-
         try {
+            assertEquals(3, analyzer.algorithmVersion)
             repeat(3) {
-                val result = analyze(analyzer, valid)
-                assertTrue(result is NativeWaveformAnalysisResult.Success)
-                val levels = (result as NativeWaveformAnalysisResult.Success).levels
+                val waveform = analyze(valid).getOrNull()
+                assertNotNull(waveform)
+                val levels = waveform!!.levels
                 assertTrue(levels.isNotEmpty())
-                assertTrue(levels.size <= NativeAudioWaveformAnalyzer.MAX_OUTPUT_SAMPLES)
+                assertTrue(levels.size <= WaveformAnalyzer.MAX_LEVELS)
                 assertTrue(levels.all { it.isFinite() && it in 0f..1f })
+                assertEquals(3, waveform.algorithmVersion)
             }
-
-            val malformedResult = analyze(analyzer, malformed)
-            assertTrue(malformedResult is NativeWaveformAnalysisResult.Failure)
-            assertTrue(
-                (malformedResult as NativeWaveformAnalysisResult.Failure).error in setOf(
-                    NativeWaveformAnalysisError.Unsupported,
-                    NativeWaveformAnalysisError.Corrupt,
-                    NativeWaveformAnalysisError.EmptyMedia,
-                )
-            )
+            val error = analyze(malformed).errorOrNull()
+            assertTrue("$error", error is AudioError.Native)
         } finally {
-            analyzer.cancel()
             valid.delete()
             malformed.delete()
         }
     }
 
     @Test
-    fun publicCancellationIsTypedAndAnalyzerRemainsReusable() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val longSource = writeSparseWav(
-            file = File(context.cacheDir, "waveform-cancel.wav"),
-            durationSeconds = 30 * 60,
-        )
+    fun cancellingTheCallerStopsAnalysisAndTheAnalyzerStaysReusable() = runBlocking {
+        val longSource = writeSparseWav(File(context.cacheDir, "waveform-cancel.wav"), durationSeconds = 30 * 60)
         val valid = writeSineWav(File(context.cacheDir, "waveform-after-cancel.wav"))
-        val analyzer = NativeAudioWaveformAnalyzer()
-
         try {
-            val descriptor = ParcelFileDescriptor.open(
-                longSource,
-                ParcelFileDescriptor.MODE_READ_ONLY,
-            )
-            val pending = async(Dispatchers.IO) {
-                descriptor.use { analyzer.analyze(it) }
-            }
-            repeat(100) {
-                if (!pending.isActive) return@repeat
-                analyzer.cancel()
-                delay(5L)
-            }
-            val cancelled = withTimeout(10_000L) { pending.await() }
-
-            assertEquals(
-                NativeWaveformAnalysisResult.Failure(
-                    NativeWaveformAnalysisError.Cancelled,
-                ),
-                cancelled,
-            )
-            assertTrue(analyze(analyzer, valid) is NativeWaveformAnalysisResult.Success)
+            val descriptor = ParcelFileDescriptor.open(longSource, ParcelFileDescriptor.MODE_READ_ONLY)
+            val pending = async(Dispatchers.IO) { descriptor.use { analyzer.analyze(it) } }
+            delay(50L)
+            pending.cancel()
+            val outcome = withTimeout(10_000L) { runCatching { pending.await() } }
+            assertTrue(outcome.exceptionOrNull() is CancellationException)
+            assertTrue(analyze(valid).isOk)
         } finally {
-            analyzer.cancel()
             longSource.delete()
             valid.delete()
         }
     }
 
-    private suspend fun analyze(
-        analyzer: NativeAudioWaveformAnalyzer,
-        file: File,
-    ): NativeWaveformAnalysisResult {
-        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use {
-            analyzer.analyze(it)
-        }
-    }
+    private suspend fun analyze(file: File): AudioResult<Waveform> =
+        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { analyzer.analyze(it) }
 
     private fun writeSineWav(file: File): File {
         val sampleRate = 44_100
