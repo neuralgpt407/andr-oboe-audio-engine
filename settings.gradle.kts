@@ -21,6 +21,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "oboe-audio-engine"
-include(":oboe-engine")
-include(":oboe-media3")
-include(":sample")
+include(":audio-engine")

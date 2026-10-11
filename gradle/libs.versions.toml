@@ -10,6 +10,7 @@ junit = "4.13.2"
 androidxJunit = "1.3.0"
 espresso = "3.7.0"
 robolectric = "4.13"
+binaryCompatibilityValidator = "0.16.3"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -28,3 +29,4 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlinx-binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "binaryCompatibilityValidator" }

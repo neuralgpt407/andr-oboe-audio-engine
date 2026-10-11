@@ -1,0 +1,134 @@
+import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.api.tasks.bundling.Jar
+import org.gradle.api.tasks.bundling.Zip
+
+plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlinx.binary.compatibility.validator)
+    `maven-publish`
+}
+
+android {
+    namespace = "com.neuralsound.audio"
+    compileSdk = 36
+    ndkVersion = "29.0.14206865"
+
+    defaultConfig {
+        minSdk = 24
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+
+        buildFeatures {
+            prefab = true
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
+}
+
+dependencies {
+    api(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.media)
+    api(libs.androidx.media3.exoplayer)
+    implementation(libs.oboe)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+}
+
+val nativeSymbols by tasks.registering(Zip::class) {
+    dependsOn("assembleRelease")
+    archiveClassifier.set("native-symbols")
+    from(layout.buildDirectory.dir("intermediates/cxx/RelWithDebInfo")) {
+        include("**/obj/arm64-v8a/*.so")
+        include("**/obj/armeabi-v7a/*.so")
+        includeEmptyDirs = false
+        eachFile {
+            val segments = relativePath.segments
+            val objIndex = segments.indexOf("obj")
+            if (objIndex >= 0 && segments.size > objIndex + 2) {
+                relativePath = RelativePath(
+                    true,
+                    segments[objIndex + 1],
+                    segments.last(),
+                )
+            }
+        }
+    }
+    from(layout.projectDirectory.dir("src/main/resources")) {
+        include("META-INF/**")
+    }
+}
+
+tasks.withType<Jar>().configureEach {
+    if (name.contains("source", ignoreCase = true)) {
+        from(layout.projectDirectory.dir("src/main/resources")) {
+            include("META-INF/**")
+        }
+    }
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                artifactId = "audio-engine"
+                from(components["release"])
+                artifact(nativeSymbols)
+                pom {
+                    name.set("Neural Sound Audio Engine")
+                    description.set("Low-latency Android multitrack playback, recording, waveform analysis and synchronized video.")
+                }
+            }
+        }
+    }
+}

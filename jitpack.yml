@@ -6,4 +6,4 @@ before_install:
   - sdkmanager "platforms;android-36" "build-tools;35.0.0" "cmake;3.22.1" "ndk;29.0.14206865"
 
 install:
-  - ./gradlew :oboe-engine:publishToMavenLocal :oboe-media3:publishToMavenLocal -PVERSION_NAME="$VERSION"
+  - ./gradlew :audio-engine:publishToMavenLocal -PVERSION_NAME="$VERSION"

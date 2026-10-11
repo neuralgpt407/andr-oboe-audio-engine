@@ -24,9 +24,6 @@ jobs:
         run: >
           ./gradlew
           testDebugUnitTest
-          :oboe-engine:assembleRelease
-          :oboe-media3:assembleRelease
-          :sample:assembleDebug
-          :oboe-engine:publishToMavenLocal
-          :oboe-media3:publishToMavenLocal
+          :audio-engine:assembleRelease
+          :audio-engine:publishToMavenLocal
           -PVERSION_NAME=ci
