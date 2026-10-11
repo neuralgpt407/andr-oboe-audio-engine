@@ -2,6 +2,7 @@ package com.neuralsound.audio
 
 import android.content.Context
 import com.neuralsound.audio.internal.NativeMixerController
+import com.neuralsound.audio.internal.player.DefaultPlayer
 import com.neuralsound.audio.player.Player
 import com.neuralsound.audio.player.PlayerOptions
 import com.neuralsound.audio.recorder.Recorder
@@ -20,9 +21,11 @@ class AudioEngine private constructor(context: Context) {
         get() = NativeMixerController.nativeLibraryAvailable
 
     /** Creates an independent player. Release it with [Player.release] when the owner goes away. */
-    fun newPlayer(options: PlayerOptions = PlayerOptions()): Player {
-        TODO("Implemented in FEAT-0001 Task 6")
-    }
+    fun newPlayer(options: PlayerOptions = PlayerOptions()): Player = DefaultPlayer(
+        controller = NativeMixerController(applicationContext),
+        options = options,
+        nativeAvailable = isAvailable,
+    )
 
     /** Creates an independent recorder. Release it with [Recorder.release] when the owner goes away. */
     fun newRecorder(): Recorder {
