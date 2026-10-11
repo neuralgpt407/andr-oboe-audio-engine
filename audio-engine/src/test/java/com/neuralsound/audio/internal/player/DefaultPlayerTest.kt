@@ -189,6 +189,25 @@ class DefaultPlayerTest {
     }
 
     @Test
+    fun aBurstOfPitchTempoChangesAppliesOnlyTheLatestValue() = runTest {
+        val controller = FakeMixerController()
+        val player = player(controller)
+        player.load(PlayerSource(tracks = listOf(original)))
+        controller.calls.clear()
+
+        repeat(20) { step -> player.setPitchTempo(PitchTempo(semitones = step % 5, tempo = if (step == 19) 1.25f else 0.5f + step * 0.05f)) }
+        advanceUntilIdle()
+
+        assertEquals(listOf("tempo:1.25", "pitch:4"), controller.calls)
+        assertEquals(PitchTempo(semitones = 4, tempo = 1.25f), player.state.value.pitchTempo)
+
+        player.setPitchTempo(PitchTempo(semitones = 1, tempo = 2f))
+        advanceUntilIdle()
+        assertEquals(listOf("tempo:1.25", "pitch:4", "tempo:2.0", "pitch:1"), controller.calls)
+        player.release()
+    }
+
+    @Test
     fun loadFailureNamesTheTrackWithoutItsUri() = runTest {
         val controller = FakeMixerController(
             prepareResult = MixerPreparationResult.Failure(
@@ -404,8 +423,15 @@ class DefaultPlayerTest {
             update(type) { it.copy(offsetMs = offsetMs) }
         }
 
-        override fun setTempo(speed: Float) { tempoSpeed.value = speed }
-        override fun setPitchSemitones(semitones: Int) { pitchSemitones.value = semitones }
+        override fun setTempo(speed: Float) {
+            calls += "tempo:$speed"
+            tempoSpeed.value = speed
+        }
+
+        override fun setPitchSemitones(semitones: Int) {
+            calls += "pitch:$semitones"
+            pitchSemitones.value = semitones
+        }
         override fun setLooping(looping: Boolean) { this.loopingEnabled = looping }
 
         override fun seekToMs(positionMs: Long): Boolean {

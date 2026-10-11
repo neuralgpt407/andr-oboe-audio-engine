@@ -29,7 +29,7 @@ public:
 private:
     static constexpr float kDefaultTempo = 1.0f;
     static constexpr float kMinTempo = 0.5f;
-    static constexpr float kMaxTempo = 1.5f;
+    static constexpr float kMaxTempo = 2.0f;
     static constexpr int kDefaultPitch = 0;
     static constexpr int kMinPitch = -10;
     static constexpr int kMaxPitch = 10;

@@ -22,6 +22,7 @@ import com.neuralsound.audio.internal.legacy.PlaybackEffects
 import com.neuralsound.audio.internal.legacy.PlaybackRange
 import com.neuralsound.audio.internal.legacy.TrackMix
 import com.neuralsound.audio.TrackId
+import com.neuralsound.audio.player.PitchTempo
 import com.neuralsound.audio.player.PlayerOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -622,10 +623,7 @@ internal class NativeMixerController(
     }
 
     override fun setTempo(speed: Float) {
-        val clampedSpeed = speed.coerceIn(
-            PlaybackEffects.MIN_TEMPO,
-            PlaybackEffects.MAX_TEMPO
-        )
+        val clampedSpeed = speed.coerceIn(PitchTempo.MIN_TEMPO, PitchTempo.MAX_TEMPO)
 
         if (abs(clampedSpeed - _tempoSpeed.value) < TEMPO_NO_OP_EPSILON) {
             return
@@ -636,10 +634,7 @@ internal class NativeMixerController(
     }
 
     override fun setPitchSemitones(semitones: Int) {
-        val clampedSemitones = semitones.coerceIn(
-            PlaybackEffects.MIN_PITCH_SEMITONES,
-            PlaybackEffects.MAX_PITCH_SEMITONES
-        )
+        val clampedSemitones = semitones.coerceIn(PitchTempo.MIN_SEMITONES, PitchTempo.MAX_SEMITONES)
 
         if (clampedSemitones == _pitchSemitones.value) {
             return
@@ -878,10 +873,7 @@ internal class NativeMixerController(
     private fun applyNativeTempoIfNeeded(speed: Float) {
         if (!engine.isActive) return
 
-        val clampedSpeed = speed.coerceIn(
-            PlaybackEffects.MIN_TEMPO,
-            PlaybackEffects.MAX_TEMPO
-        )
+        val clampedSpeed = speed.coerceIn(PitchTempo.MIN_TEMPO, PitchTempo.MAX_TEMPO)
         val isDefaultReset = abs(clampedSpeed - PlaybackEffects.DEFAULT_TEMPO) < TEMPO_NO_OP_EPSILON &&
             abs(lastNativeTempoSpeed - PlaybackEffects.DEFAULT_TEMPO) >= TEMPO_NO_OP_EPSILON
         val shouldApply = isDefaultReset || abs(clampedSpeed - lastNativeTempoSpeed) >= TEMPO_NATIVE_APPLY_THRESHOLD

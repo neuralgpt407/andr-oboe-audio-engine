@@ -27,6 +27,7 @@ import com.neuralsound.audio.player.TrackSettings
 import com.neuralsound.audio.player.TrackState
 import com.neuralsound.audio.player.VideoController
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -63,6 +64,7 @@ internal class DefaultPlayer(
     private val releaseDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : Player {
     private val released = AtomicBoolean(false)
+    private val pendingPitchTempo = AtomicReference<PitchTempo?>(null)
     private val scope = CoroutineScope(SupervisorJob() + commandDispatcher)
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val pending = mutableSetOf<CompletableDeferred<AudioResult<*>>>()
@@ -140,11 +142,19 @@ internal class DefaultPlayer(
         }
     }
 
-    override fun setPitchTempo(pitchTempo: PitchTempo) = enqueue {
-        val clamped = pitchTempo.clamped()
-        controller.setTempo(clamped.tempo)
-        controller.setPitchSemitones(clamped.semitones)
-        updateLive { it.copy(pitchTempo = clamped) }
+    /**
+     * Slider drags call this many times per second; only the latest value is applied, and the
+     * controller additionally debounces the native tempo change.
+     */
+    override fun setPitchTempo(pitchTempo: PitchTempo) {
+        if (released.get()) return
+        if (pendingPitchTempo.getAndSet(pitchTempo.clamped()) != null) return
+        enqueue {
+            val latest = pendingPitchTempo.getAndSet(null) ?: return@enqueue
+            controller.setTempo(latest.tempo)
+            controller.setPitchSemitones(latest.semitones)
+            updateLive { it.copy(pitchTempo = latest) }
+        }
     }
 
     override fun updateTrack(id: TrackId, transform: (TrackSettings) -> TrackSettings) = enqueue {
