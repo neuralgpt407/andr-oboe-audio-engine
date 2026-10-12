@@ -982,12 +982,14 @@ internal class NativeMixerController(
 
     private fun requestAudioFocus() {
         focusHandler.onUserCommand()
-        if (!focusHandler.requestsFocus) return
-        AudioManagerCompat.requestAudioFocus(audioManager, focusRequest)
+        if (!focusHandler.needsFocusRequest()) return
+        val result = AudioManagerCompat.requestAudioFocus(audioManager, focusRequest)
+        focusHandler.onFocusRequestResult(result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
     }
 
     private fun abandonAudioFocus() {
         if (!focusHandler.requestsFocus) return
+        focusHandler.onFocusAbandoned()
         AudioManagerCompat.abandonAudioFocusRequest(audioManager, focusRequest)
     }
 

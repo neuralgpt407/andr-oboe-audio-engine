@@ -36,6 +36,26 @@ internal class AudioFocusHandler(
     val requestsFocus: Boolean
         get() = policy !is FocusPolicy.Ignore
 
+    /**
+     * Whether this session holds focus: granted and neither lost nor abandoned since. A held
+     * request must not be repeated. Re-requesting while another app's request is in flight
+     * makes the platform hand focus straight back to us *and* deliver that app's loss
+     * afterwards, so playback stays paused or ducked with no GAIN ever coming.
+     */
+    @Volatile var holdsFocus = false
+        private set
+
+    /** True when starting playback must request focus: never for [FocusPolicy.Ignore] or while held. */
+    fun needsFocusRequest(): Boolean = requestsFocus && !holdsFocus
+
+    fun onFocusRequestResult(granted: Boolean) {
+        holdsFocus = granted
+    }
+
+    fun onFocusAbandoned() {
+        holdsFocus = false
+    }
+
     /** Call when the app explicitly starts or stops playback; a user action cancels auto-resume. */
     fun onUserCommand() {
         pausedByFocus = false
@@ -43,6 +63,7 @@ internal class AudioFocusHandler(
 
     fun onFocusChange(focusChange: Int) {
         if (!requestsFocus) return
+        holdsFocus = focusChange == AudioManager.AUDIOFOCUS_GAIN
         when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> {
                 unduck()

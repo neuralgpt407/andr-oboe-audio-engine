@@ -109,4 +109,28 @@ class AudioFocusHandlerTest {
         assertEquals("attenuate:1.0", actions.log.last())
         assertFalse(handler.ducked)
     }
+
+    @Test
+    fun heldFocusIsNotRequestedAgainUntilItIsLostOrAbandoned() {
+        val handler = AudioFocusHandler(FocusPolicy.Duck(), Recorder())
+
+        assertTrue(handler.needsFocusRequest())
+        handler.onFocusRequestResult(granted = true)
+        assertFalse("play while holding focus must not re-request it", handler.needsFocusRequest())
+
+        handler.onFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK)
+        assertTrue("a play during a loss takes focus back", handler.needsFocusRequest())
+        handler.onFocusChange(AudioManager.AUDIOFOCUS_GAIN)
+        assertFalse(handler.needsFocusRequest())
+
+        handler.onFocusAbandoned()
+        assertTrue(handler.needsFocusRequest())
+        handler.onFocusRequestResult(granted = false)
+        assertTrue("a refused request is retried on the next play", handler.needsFocusRequest())
+    }
+
+    @Test
+    fun ignorePolicyNeverNeedsAFocusRequest() {
+        assertFalse(AudioFocusHandler(FocusPolicy.Ignore, Recorder()).needsFocusRequest())
+    }
 }
