@@ -80,11 +80,15 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.media)
     api(libs.androidx.media3.exoplayer)
+    api(libs.androidx.lifecycle.common)
+    implementation(libs.androidx.lifecycle.runtime)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.oboe)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.lifecycle.runtime.testing)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

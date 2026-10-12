@@ -350,6 +350,23 @@ public final class com/neuralsound/audio/player/FocusState : java/lang/Enum {
 	public static fun values ()[Lcom/neuralsound/audio/player/FocusState;
 }
 
+public final class com/neuralsound/audio/player/LifecycleBinding {
+	public fun <init> ()V
+	public fun <init> (ZZZ)V
+	public synthetic fun <init> (ZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Z
+	public final fun component3 ()Z
+	public final fun copy (ZZZ)Lcom/neuralsound/audio/player/LifecycleBinding;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/LifecycleBinding;ZZZILjava/lang/Object;)Lcom/neuralsound/audio/player/LifecycleBinding;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPauseInBackground ()Z
+	public final fun getReleaseOnDestroy ()Z
+	public final fun getResumeInForeground ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/neuralsound/audio/player/MixApplyResult {
 	public fun <init> (Ljava/util/Set;Ljava/util/Set;)V
 	public final fun component1 ()Ljava/util/Set;
@@ -499,6 +516,12 @@ public final class com/neuralsound/audio/player/PlayerEvent$TrackFailed : com/ne
 	public final fun getTrackId-k1C3Psg ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerLifecycleKt {
+	public static final fun bindTo (Lcom/neuralsound/audio/player/Player;Landroidx/lifecycle/LifecycleOwner;Lcom/neuralsound/audio/player/LifecycleBinding;)Ljava/lang/AutoCloseable;
+	public static synthetic fun bindTo$default (Lcom/neuralsound/audio/player/Player;Landroidx/lifecycle/LifecycleOwner;Lcom/neuralsound/audio/player/LifecycleBinding;ILjava/lang/Object;)Ljava/lang/AutoCloseable;
+	public static final fun releaseWith (Lcom/neuralsound/audio/player/Player;Lkotlinx/coroutines/CoroutineScope;)V
 }
 
 public final class com/neuralsound/audio/player/PlayerMix {
