@@ -1,38 +1,31 @@
-# Neural Sound Oboe Audio Engine
+# Neural Sound Audio Engine
 
-Reusable Android audio engine for low-latency multitrack playback, pitch/tempo
-processing, microphone recording, waveform telemetry, WAV writing, device-route
-recovery, and optional Media3 video synchronization.
+One Android audio SDK for the Neural Sound apps (Denoise, Music Separation, Music
+Separation On-Device):
 
-## Artifacts
+- multitrack playback on one clock (stems, A/B buses), live track append, per-track volume,
+  mute, balance, offset and boost;
+- master pitch/tempo, lookahead limiter and focus ducking;
+- a muted Media3 video kept in sync with the audio;
+- microphone recording into 44.1 kHz WAV takes, with frame-exact punch-in;
+- offline file waveforms.
+
+It is built on Oboe (AAudio/OpenSL ES) with a native mixer, NDK MediaCodec decoding and
+Signalsmith Stretch.
+
+## Artifact
 
 | Artifact | Purpose |
 | --- | --- |
-| `com.github.neuralgpt407.andr-oboe-audio-engine:oboe-engine:<tag>` | Oboe playback, effects, recording, and resampling |
-| `com.github.neuralgpt407.andr-oboe-audio-engine:oboe-media3:<tag>` | Optional muted-video synchronization backed by Media3 |
-| `com.github.neuralgpt407.andr-oboe-audio-engine:oboe-engine:<tag>:native-symbols@zip` | Unstripped native symbols for Play Console and Crashlytics |
+| `com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:<tag>` | Player (with built-in video), recorder, waveform analysis |
+| `com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:<tag>:native-symbols@zip` | Unstripped native symbols for Play Console / Crashlytics |
 
-The Android baseline is min SDK 24, compile SDK 36, NDK 29, CMake 3.22.1,
-Java 11, and Kotlin 2.0. The published native ABIs are `arm64-v8a` and
-`armeabi-v7a`.
-
-## Build locally
-
-Create `local.properties` with your Android SDK location, then run:
-
-```shell
-./gradlew testDebugUnitTest
-./gradlew :oboe-engine:assembleRelease :oboe-media3:assembleRelease
-./gradlew :sample:assembleDebug
-./gradlew publishToMavenLocal
-```
-
-## Consume from JitPack
-
-Add the public JitPack repository to `settings.gradle.kts`. No username or
-token is required:
+The Android baseline is min SDK 24, compile SDK 36, NDK 29, CMake 3.22.1, Java 11 and
+Kotlin 2.0. The published ABIs are `arm64-v8a` and `armeabi-v7a`. The native library is
+`libneuralsound_audio_engine.so`; it exports only `JNI_OnLoad`.
 
 ```kotlin
+// settings.gradle.kts
 dependencyResolutionManagement {
     repositories {
         google()
@@ -40,187 +33,148 @@ dependencyResolutionManagement {
         maven("https://jitpack.io")
     }
 }
-```
 
-Use the core artifact for playback and recording:
-
-```kotlin
+// build.gradle.kts
 dependencies {
-    implementation(
-        "com.github.neuralgpt407.andr-oboe-audio-engine:oboe-engine:v0.2.0"
-    )
+    implementation("com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:v1.0.0")
 }
 ```
 
-Use the Media3 artifact instead when video synchronization is required. It
-brings `oboe-engine` transitively:
+## Quick start
+
+The SDK is organized around one entry point and three session types. Every session exposes
+**one `StateFlow`** for what the UI renders and **one event `Flow`** for one-off happenings.
+Calls are main-safe; `suspend` functions wait for native work. Failures are always a typed
+`AudioResult.Err(AudioError)` and never contain media URIs or paths.
 
 ```kotlin
-dependencies {
-    implementation(
-        "com.github.neuralgpt407.andr-oboe-audio-engine:oboe-media3:v0.2.0"
-    )
-}
-```
+val engine = AudioEngine.create(context)          // one per process, e.g. in your DI graph
 
-## Multitrack playback
-
-Each feature owns a session and closes it with the feature lifecycle.
-`TrackId` is caller-defined; adding a new stem does not require a library
-release.
-
-```kotlin
-val engine = AudioEngine(applicationContext)
-val mixer = engine.createMixerSession()
-
-val result = mixer.prepare(
-    MixerRequest(
+// Player: one per screen (player, recording preview, separation preview).
+val player = engine.newPlayer(PlayerOptions(maxTracks = 10, focus = FocusPolicy.Duck()))
+player.load(
+    PlayerSource(
         tracks = listOf(
-            MixerTrack(TrackId("vocal"), vocalUri),
-            MixerTrack(
-                id = TrackId("instrumental"),
-                uri = instrumentalUri,
-                mix = TrackMix(volume = 0.8f),
-            ),
+            Track(TrackId("original"), originalUri, TrackSettings(muted = true)),
+            Track(TrackId("denoised"), denoisedUri, TrackSettings(boostDb = 6)),
         ),
-        effects = PlaybackEffects(tempo = 1f, pitchSemitones = 0),
-    )
+        videoUri = videoUri,                        // optional muted video
+        autoPlay = true,
+    ),
 )
+player.appendTrack(Track(TrackId("vocal"), vocalUri))          // joins at the playhead
+player.updateTrack(TrackId("original")) { it.copy(muted = false, balance = ChannelGain.balance(-0.3f)) }
+player.setPitchTempo(PitchTempo(semitones = -2, tempo = 1.25f))
+player.setRange(PlaybackRange(10_000, 20_000), loop = true)
+player.seekToFraction(0.5f); player.seekBy(-10_000); player.seekAndPlay(30_000)
 
-if (result == AudioResult.Success) {
-    mixer.play()
-}
+player.state.collect { s -> /* status, positionMs, durationMs, tracks, pitchTempo, route, video */ }
+player.events.collect { e -> /* Completed, TrackFailed, FocusChanged, RouteChanged, Failed */ }
 
-// Observe transport, timing, effects, route, and all track state together.
-val state: StateFlow<MixerState> = mixer.state
-
-// ViewModel.onCleared(), owner disposal, or equivalent.
-mixer.close()
+val snapshot = player.detach()                    // hand off to another screen...
+engine.newPlayer().restore(snapshot!!)            // ...and continue where it left off
+player.release()
 ```
-
-The engine owns audio focus, becoming-noisy handling, file descriptors, route
-recovery, native handles, decode threads, and playback polling. Callers own
-URIs, permission UX, feature state, and session lifetime.
-`MixerState.route.deviceId` may be null briefly while a disconnected or paused
-native stream is reopening on the new output device.
-
-Every successfully decoded source is normalized to one canonical 44.1 kHz
-stereo processing clock before it enters the mixer. Mono is duplicated to
-stereo, stereo preserves left and right, and sources with more than two
-channels are averaged to mono and then duplicated to stereo. A 48 kHz Original
-track and a 44.1 kHz Denoised track therefore share one duration and position
-clock through prepare, progressive append, switching, seek, effects, and
-end-of-stream.
-
-Missing or non-positive format metadata, unreadable media, decoder failures,
-and resampler failures remain typed public failures. A failed preparation
-never publishes a partially prepared set of tracks.
-
-## Media3 synchronization
 
 ```kotlin
-val session = Media3AudioEngine(applicationContext).createSession()
-session.prepare(
-    Media3MixerRequest(
-        audio = mixerRequest,
-        videoUri = videoUri,
-    )
-)
-
-val player: Player? = session.videoState.value.player
-session.mixer.play()
-session.close()
+// Recorder: warm mic, any number of takes, pushed meter and waveform.
+val recorder = engine.newRecorder()
+recorder.openMic()                                        // needs RECORD_AUDIO
+val take = recorder.record(
+    TakeRequest(file, startFrame = Recorder.framesForMs(30_000), mode = TakeMode.PUNCH_IN),
+).getOrNull()!!
+take.waveform.collect { buckets -> /* 32 ms RMS buckets */ }
+recorder.meter.collect { meter -> /* peak, rms, clipping */ }
+take.pause(); take.resume()                               // crossfaded punch-in segments
+val result = take.stop()                                  // TakeResult(frames, fileDurationMs, ...)
 ```
-
-The adapter keeps video muted, follows mixer play/pause, mirrors tempo, corrects
-drift above 250 ms, and reports first-frame/aspect-ratio state.
-
-## Waveform analysis
-
-`NativeAudioWaveformAnalyzer` decodes in a background native pipeline that is
-independent of the real-time playback callback. The caller retains ownership of
-the source descriptor; the analyzer duplicates it for native work and releases
-all native resources on success, failure, or cancellation.
 
 ```kotlin
-val analyzer = NativeAudioWaveformAnalyzer()
-
-val result = contentResolver.openFileDescriptor(sourceUri, "r")!!.use { source ->
-    analyzer.analyze(source)
-}
-
-when (result) {
-    is NativeWaveformAnalysisResult.Success -> render(result.levels)
-    is NativeWaveformAnalysisResult.Failure -> handle(result.error)
-}
-
-// Cancels analyses currently owned by this analyzer.
-analyzer.cancel()
+// Waveform of a file (cancel by cancelling the coroutine; cache by algorithmVersion).
+val waveform = engine.waveforms.analyze(parcelFileDescriptor).getOrNull()
 ```
 
-The stable cache metadata is
-`NativeAudioWaveformAnalyzer.ALGORITHM_VERSION == 3` and
-`MAX_OUTPUT_SAMPLES == 1024`. Version 3 selects the larger absolute magnitude
-from each stereo PCM16 frame, safely handles `-32768`, and computes RMS levels
-over 32 ms windows, including the final partial window. Oversized envelopes are
-reduced by RMS to the requested bound. Tracks are not normalized against each
-other, so their absolute amplitudes remain comparable. Failures distinguish
-unreadable, unsupported, corrupt, empty, cancelled, invalid-argument, and
-native-unavailable outcomes.
+## Behaviour
 
-## Recording
+**Player**
+- **Tracks.** Up to `PlayerOptions.maxTracks` per player (default 8, up to 16). Any sample
+  rate and channel count is normalized to 44.1 kHz stereo on one clock.
+- **Offsets.** `TrackSettings.offsetMs` is a read offset: a positive value reads the track
+  ahead (it sounds earlier, e.g. to compensate recording latency), and a negative value
+  delays it behind silence.
+- **Signal chain.** Per-track boost (0–18 dB, 5 ms ramp) → mix → pitch/tempo (±10 semitones,
+  0.5–2.0×) → linked lookahead limiter (0.98 ceiling, 5 ms lookahead, 50 ms release) → duck
+  ramp → safety clamp. The limiter matches the export filter
+  `alimiter limit=0.98 attack=5 release=50`.
+- **Clamping.** Out-of-range settings are clamped; the applied values are what
+  `PlayerState` reports.
+- **End of playback.** A range repeats only when `loop = true`. A natural end emits one
+  `PlayerEvent.Completed` and moves to `ENDED`.
+- **Audio focus.**
+  - `Duck` ramps down on may-duck losses.
+  - `PauseAndResume` pauses on them.
+  - With either policy, a transient loss pauses and auto-resumes unless the user paused or
+    played in between, and a permanent loss always pauses.
+  - `Ignore` never requests focus. Use it for secondary players such as recording previews,
+    so they don't interrupt the main one.
+- **Routes.** `pauseOnNoisy` pauses when headphones are unplugged. Route changes reopen the
+  stream. `PlayerState.route.kind` tells recording UIs whether monitoring-grade output (wired
+  or USB) is connected.
+- **Video.** `PlayerState.video.player` is a Media3 `Player` to put in a `PlayerView`. The
+  video follows play/pause/tempo and is drift-corrected (75 ms dead-band, hard correction
+  above 450 ms). Use `video.suspendPresentation()` / `attachPresentation()` /
+  `detachPresentation()` while audio keeps playing, and rebind views when
+  `VideoState.revision` changes.
+- **Diagnostics.** `player.diagnostics()` reports audio-callback and render-thread load and
+  underruns.
 
-The host app must request `android.permission.RECORD_AUDIO` before opening the
-mic session.
+**Recorder**
+- **Takes** are 44.1 kHz mono PCM16 WAV whatever the device input rate. `TakeMode.NEW`
+  replaces the file; `PUNCH_IN` overwrites from `startFrame` with a 5 ms crossfade and keeps
+  everything else.
+- **Saturation.** Input saturation (soft tanh) is off unless `TakeRequest.saturation = true`.
+- **Disconnects.** If the input device disconnects, the partial take is finalized as a valid
+  WAV and `RecorderEvent.InputLost` is emitted.
 
-```kotlin
-val recorder = AudioEngine(applicationContext)
-    .createFramePreciseRecorderSession()
+## Migrating from the app-local engines
 
-recorder.startMicSession()
-recorder.startWriting(
-    FrameRecordingRequest(
-        outputFile = outputFile,
-        startOffsetFrames = cumulativePcmFrames,
-    )
-)
-val telemetry = recorder.telemetry(afterBucketIndex = 0)
-val recording = recorder.stopWriting()
-recorder.releaseMicSession()
-recorder.close()
+| App-local engine (`AudioMixerManager`) | `audio-engine` |
+| --- | --- |
+| `AudioMixerSessionFactory.create()` + owner tokens | `engine.newPlayer()` per owner, `release()` |
+| `initializePlayers` / `preparePlayers(map, volumes, gains, …)` | `load(PlayerSource(tracks, videoUri, startAtMs, range, loop, pitchTempo, autoPlay))` |
+| `AudioTrackType` enum | `TrackId(enum.name)` (keeps persisted names) |
+| `setVolume` / `setMuted` / `setChannelGain` / `setTrackOffset` / `setSourceBoostDb` | `updateTrack(id) { it.copy(...) }` |
+| `setTempo` / `setPitchSemitones` / `applyPlaybackAdjustments` | `setPitchTempo(PitchTempo(...))` |
+| `seekTo(fraction)` / `seekToMs` / `seekBack` / `seekForward` / `seekToAndPlay` | `seekToFraction` / `seekTo` / `seekBy(±10_000)` / `seekAndPlay` |
+| `currentPosition`, `totalDuration`, `isPlaying`, `videoAspectRatio`, … flows | `player.state` |
+| `naturalPlaybackCompletions` | `player.events` → `PlayerEvent.Completed` |
+| `releasePlayersPreservingPlaybackState` | `detach()` + `restore(snapshot)` |
+| `attachVideoPresentation` / `detachVideoPresentation` | `player.video.attachPresentation()` / `detachPresentation()` |
+| `OboeRecorderEngine.startMicSession` / `startWritingAtFrame` / `telemetry(i)` | `recorder.openMic()` / `record(TakeRequest(...))` / `take.waveform` |
+| `NativeAudioWaveformAnalyzer.analyze(fd)` | `engine.waveforms.analyze(fd)` |
+
+## Build and verify
+
+```shell
+./gradlew :audio-engine:testDebugUnitTest :audio-engine:apiCheck   # needs a host c++ for the DSP host tests
+./gradlew :audio-engine:assembleRelease
+./gradlew :audio-engine:connectedDebugAndroidTest                  # physical device
 ```
 
-Recording opens the device-native input rate and converts to the canonical
-44.1 kHz WAV rate when needed. If that conversion cannot be configured, opening
-the mic session fails instead of producing a noncanonical WAV.
-`RecordingResult` reports accepted and written frame counts so callers can
-reject incomplete files. Invalid lifecycle calls return
-`RecorderError.InvalidState`; `RecordingResult.file` is null when no output
-file was created.
-
-`FramePreciseRecorderSession.state` atomically exposes status and the matching
-typed failure. `currentFailure` is a replaying `StateFlow<RecorderFailure?>`:
-asynchronous disconnect, overflow, and writer errors are visible to late
-collectors, and an accepted new recording start clears the previous failure.
-The original `createRecorderSession()` and millisecond-oriented
-`RecordingRequest` API remain available and source-compatible.
+The public API is locked by `audio-engine/api/audio-engine.api`
+(binary-compatibility-validator). After 1.0, releases may only add to it. The EngineTest app
+(a separate repository) runs every app use case against the SDK, either through a composite
+build or from JitPack.
 
 ## Release and symbols
 
-Create and push an immutable Git tag such as `v0.2.0`, then look up
-`neuralgpt407/andr-oboe-audio-engine` on
-[JitPack](https://jitpack.io/#neuralgpt407/andr-oboe-audio-engine). JitPack
-builds the two Maven publications from that tag; there is no package upload or
-registry credential. The tag is the dependency version, including its `v`
-prefix.
+Push an immutable tag such as `v1.0.0`; JitPack builds `audio-engine` from it. The tag,
+including its `v` prefix, is the dependency version. Before tagging, qualify a local
+publication with [`verification/release`](verification/release/README.md) and
+[`verification/consumer-smoke`](verification/consumer-smoke). Use semantic versioning, and
+never move or reuse a published tag.
 
-Use semantic versioning: patch releases for compatible fixes, minor releases
-for compatible features, and major releases for breaking public API changes.
-Never move or reuse a published tag.
-
-Consumer apps should resolve the version-matched symbol classifier into their
-Play/Crashlytics symbol packaging task instead of reading this project’s build
-directory:
+Resolve the version-matched symbols into your Play/Crashlytics packaging:
 
 ```kotlin
 val nativeDebugSymbols by configurations.creating {
@@ -229,19 +183,11 @@ val nativeDebugSymbols by configurations.creating {
 }
 
 dependencies {
-    add(
-        nativeDebugSymbols.name,
-        "com.github.neuralgpt407.andr-oboe-audio-engine:" +
-            "oboe-engine:v0.2.0:native-symbols@zip"
-    )
+    add(nativeDebugSymbols.name, "com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:v1.0.0:native-symbols@zip")
 }
 ```
 
-Wire that resolvable configuration into the consuming app's symbol-packaging
-task. The classifier contains unstripped symbols for `arm64-v8a` and
-`armeabi-v7a` and must use the same immutable version as the runtime artifact.
-
 ## Third-party code
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Vendored license files
-remain beside their sources.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Vendored license files remain beside
+their sources.
