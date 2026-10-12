@@ -27,7 +27,10 @@ import com.neuralsound.audio.player.PlayerStatus
 import com.neuralsound.audio.player.Track
 import com.neuralsound.audio.player.TrackSettings
 import com.neuralsound.audio.player.TrackState
+import com.neuralsound.audio.internal.video.NoVideoPort
+import com.neuralsound.audio.internal.video.VideoPort
 import com.neuralsound.audio.player.VideoController
+import com.neuralsound.audio.player.VideoState
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
@@ -64,6 +67,7 @@ internal class DefaultPlayer(
     private val nativeAvailable: Boolean,
     commandDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
     private val releaseDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    videoFactory: (StateFlow<PlayerState>, ((VideoState) -> VideoState) -> Unit) -> VideoPort = { _, _ -> NoVideoPort },
 ) : Player {
     private val released = AtomicBoolean(false)
     private val pendingPitchTempo = AtomicReference<PitchTempo?>(null)
@@ -80,7 +84,11 @@ internal class DefaultPlayer(
     )
     override val events: Flow<PlayerEvent> = _events.asSharedFlow()
 
-    override val video: VideoController = NoVideoController
+    private val videoPort: VideoPort = videoFactory(_state.asStateFlow()) { transform ->
+        _state.update { if (it.status == PlayerStatus.RELEASED) it else it.copy(video = transform(it.video)) }
+    }
+    override val video: VideoController
+        get() = videoPort
 
     /** Loaded tracks in order, with the settings the app asked for (clamped). */
     private val tracks = linkedMapOf<TrackId, Track>()
@@ -190,6 +198,7 @@ internal class DefaultPlayer(
             pending.clear()
         }
         commands.close()
+        runCatching { videoPort.release() }
         withContext(releaseDispatcher) { controller.closeNow() }
         scope.cancel()
     }
@@ -248,10 +257,12 @@ internal class DefaultPlayer(
                         error = null,
                     )
                 }
+                videoPort.setSource(source.videoUri)
                 if (source.autoPlay) playNow()
                 AudioResult.Done
             }
             is MixerPreparationResult.Failure -> {
+                videoPort.setSource(null)
                 val error = result.failure?.let(::toPublic) ?: AudioError.Native("load")
                 fail(error)
                 AudioResult.Err(error)
@@ -460,14 +471,6 @@ internal class DefaultPlayer(
         val INACTIVE = setOf(PlayerStatus.IDLE, PlayerStatus.FAILED, PlayerStatus.RELEASED)
         val SNAPSHOT_STATUSES = setOf(PlayerStatus.READY, PlayerStatus.PLAYING, PlayerStatus.PAUSED, PlayerStatus.ENDED)
     }
-}
-
-/** Placeholder until the video presenter is wired into the player (FEAT-0001 Task 24). */
-internal object NoVideoController : VideoController {
-    override fun attachPresentation() = Unit
-    override fun suspendPresentation() = Unit
-    override fun detachPresentation() = Unit
-    override fun notifySurfaceRecreated() = Unit
 }
 
 /** Validation of [PlayerOptions]; an invalid option fails [Player.load] with `InvalidConfiguration`. */

@@ -8,6 +8,7 @@ import com.neuralsound.audio.internal.NativeMixerController
 import com.neuralsound.audio.internal.NativeRecorderSession
 import com.neuralsound.audio.internal.recorder.DefaultRecorder
 import com.neuralsound.audio.internal.player.DefaultPlayer
+import com.neuralsound.audio.internal.video.PlayerVideo
 import com.neuralsound.audio.internal.waveform.DefaultWaveformAnalyzer
 import com.neuralsound.audio.player.Player
 import com.neuralsound.audio.player.PlayerOptions
@@ -36,6 +37,7 @@ class AudioEngine private constructor(context: Context) {
         ),
         options = options,
         nativeAvailable = isAvailable,
+        videoFactory = { state, publish -> PlayerVideo(applicationContext, state, publish) },
     )
 
     /** Creates an independent recorder. Release it with [Recorder.release] when the owner goes away. */

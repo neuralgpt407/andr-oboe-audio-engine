@@ -5,52 +5,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import com.neuralsound.audio.internal.legacy.AudioResult
-import com.neuralsound.audio.internal.legacy.MixerRequest
-import com.neuralsound.audio.internal.legacy.MixerSession
-import com.neuralsound.audio.internal.legacy.MixerState
-import com.neuralsound.audio.internal.legacy.MixerTrack
-import com.neuralsound.audio.internal.legacy.PlaybackEffects
-import com.neuralsound.audio.internal.legacy.PlaybackRange
-import com.neuralsound.audio.TrackId
-import com.neuralsound.audio.internal.legacy.TrackMix
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-
-internal class FakeMixerSession(
-    private val onPrepare: suspend (Int) -> AudioResult = { AudioResult.Success },
-) : MixerSession {
-    private val mutableState = MutableStateFlow(MixerState())
-    override val state: StateFlow<MixerState> = mutableState
-    var prepareCalls = 0
-    var closeCalls = 0
-
-    override suspend fun prepare(request: MixerRequest): AudioResult {
-        prepareCalls += 1
-        return onPrepare(prepareCalls)
-    }
-
-    fun publish(state: MixerState) {
-        mutableState.value = state
-    }
-
-    override fun appendTrack(track: MixerTrack): AudioResult = AudioResult.Success
-    override fun play(): AudioResult = AudioResult.Success
-    override fun pause(): AudioResult = AudioResult.Success
-    override fun seekTo(positionMs: Long): AudioResult = AudioResult.Success
-    override fun setPlaybackRange(range: PlaybackRange?): AudioResult = AudioResult.Success
-    override fun setLooping(looping: Boolean): AudioResult = AudioResult.Success
-    override fun updateTrackMix(trackId: TrackId, mix: TrackMix): AudioResult = AudioResult.Success
-    override fun setTrackOffset(trackId: TrackId, offsetMs: Long): AudioResult = AudioResult.Success
-    override fun setEffects(effects: PlaybackEffects): AudioResult = AudioResult.Success
-
-    override fun close() {
-        closeCalls += 1
-    }
-}
 
 internal class FakePlayer : InvocationHandler {
     val player: Player = Proxy.newProxyInstance(
