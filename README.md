@@ -36,7 +36,7 @@ dependencyResolutionManagement {
 
 // build.gradle.kts
 dependencies {
-    implementation("com.github.neuralgpt407:andr-oboe-audio-engine:v1.0.1")
+    implementation("com.github.neuralgpt407:andr-oboe-audio-engine:v1.0.2")
 }
 ```
 
@@ -138,7 +138,7 @@ val waveform = engine.waveforms.analyze(parcelFileDescriptor).getOrNull()
 - **Disconnects.** If the input device disconnects, the partial take is finalized as a valid
   WAV and `RecorderEvent.InputLost` is emitted.
 
-**Clock, mix and lifecycle** (v1.0.2 line)
+**Clock, mix and lifecycle** (v1.0.2)
 - **Clock.** Use `player.clock.positionAt(frameNanos)` inside `withFrameNanos` for lyrics and
   scrubbers, and `player.clock.positions(250)` for UI-rate text. A seek shows its clamped target
   at once (`reading.seeking`, `seekTargetMs`). `reading.discontinuity` rises by one on each
@@ -217,7 +217,7 @@ val nativeDebugSymbols by configurations.creating {
 }
 
 dependencies {
-    add(nativeDebugSymbols.name, "com.github.neuralgpt407:andr-oboe-audio-engine:v1.0.1:native-symbols@zip")
+    add(nativeDebugSymbols.name, "com.github.neuralgpt407:andr-oboe-audio-engine:v1.0.2:native-symbols@zip")
 }
 ```
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (v1.0.2 line, FEAT-0002)
+## v1.0.2
 
 Additive only: no existing signature, data-class constructor or enum changes (ADR 0002).
 These APIs let an app keep only UI, state and persistence while the SDK owns the audio pipeline.
