@@ -24,6 +24,9 @@ internal interface MixerController {
     val pitchSemitones: StateFlow<Int>
     val runtimeFailure: StateFlow<AudioFailure?>
 
+    /** True while a seek or other position-changing sync is in flight; position emissions are not authoritative then. */
+    val isSyncing: StateFlow<Boolean>
+
     /** Audio-focus transitions handled by the session's focus policy. */
     val focusChanges: Flow<FocusState>
 

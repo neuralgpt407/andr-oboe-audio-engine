@@ -368,6 +368,7 @@ class DefaultPlayerTest {
         override val tempoSpeed = MutableStateFlow(1f)
         override val pitchSemitones = MutableStateFlow(0)
         override val runtimeFailure = MutableStateFlow<AudioFailure?>(null)
+        override val isSyncing = MutableStateFlow(false)
         override val completions = MutableSharedFlow<MixerCompletion>(extraBufferCapacity = 8)
         override val focusChanges = MutableSharedFlow<FocusState>(extraBufferCapacity = 8)
 
@@ -392,7 +393,15 @@ class DefaultPlayerTest {
         override fun currentRoutedOutputDeviceId(): Int? = null
         override fun currentRoutedOutputDeviceType(deviceId: Int?): Int? = null
         override fun currentOutputTopologyRevision(): Long = 0L
-        override fun setPlaybackRange(range: InternalPlaybackRange?) { this.range = range }
+        override fun setPlaybackRange(range: InternalPlaybackRange?) {
+            this.range = range
+            // The native controller seeks to the range start when the position is outside the range.
+            if (holdSyncOnSeek && prepared && range != null &&
+                (currentPosition.value < range.startMs || currentPosition.value > range.endMs)
+            ) {
+                seekToMs(range.startMs)
+            }
+        }
 
         override suspend fun preparePlayers(
             tracks: Map<TrackId, Uri>,
@@ -493,10 +502,25 @@ class DefaultPlayerTest {
         }
         override fun setLooping(looping: Boolean) { this.loopingEnabled = looping }
 
+        /** When true, seeks stay "syncing" and do not move the position until [finishSeek], like the native controller. */
+        var holdSyncOnSeek = false
+        private var pendingSeekMs = 0L
+
         override fun seekToMs(positionMs: Long): Boolean {
             calls += "seek:$positionMs"
-            currentPosition.value = positionMs.coerceAtMost(totalDuration.value)
+            val target = positionMs.coerceAtMost(totalDuration.value)
+            if (holdSyncOnSeek && prepared) {
+                pendingSeekMs = target
+                isSyncing.value = true
+            } else {
+                currentPosition.value = target
+            }
             return prepared
+        }
+
+        fun finishSeek() {
+            currentPosition.value = pendingSeekMs
+            isSyncing.value = false
         }
 
         override fun snapshotTracks(): Map<TrackId, MixerTrackState> = tracks.toMap()

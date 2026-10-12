@@ -12,11 +12,13 @@ import com.neuralsound.audio.internal.MixerPlaybackFailureReason
 import com.neuralsound.audio.internal.MixerPlaybackResult
 import com.neuralsound.audio.internal.MixerPreparationResult
 import com.neuralsound.audio.internal.OutputRoutePolicy
+import com.neuralsound.audio.internal.PlaybackRangePolicy
 import com.neuralsound.audio.player.AudioRoute
 import com.neuralsound.audio.player.CallbackStats
 import com.neuralsound.audio.player.CompletionReason
 import com.neuralsound.audio.player.FocusPolicy
 import com.neuralsound.audio.player.PitchTempo
+import com.neuralsound.audio.player.PlaybackClock
 import com.neuralsound.audio.player.PlaybackRange
 import com.neuralsound.audio.player.Player
 import com.neuralsound.audio.player.PlayerEvent
@@ -50,6 +52,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -69,6 +73,7 @@ internal class DefaultPlayer(
     commandDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
     private val releaseDispatcher: CoroutineDispatcher = Dispatchers.IO,
     videoFactory: (StateFlow<PlayerState>, ((VideoState) -> VideoState) -> Unit) -> VideoPort = { _, _ -> NoVideoPort },
+    nanoTime: () -> Long = System::nanoTime,
 ) : Player {
     private val released = AtomicBoolean(false)
     private val pendingPitchTempo = AtomicReference<PitchTempo?>(null)
@@ -84,6 +89,16 @@ internal class DefaultPlayer(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     override val events: Flow<PlayerEvent> = _events.asSharedFlow()
+
+    private val playbackClock = DefaultPlaybackClock(
+        scope = scope,
+        syncing = controller.isSyncing,
+        enginePosition = { controller.currentPosition.value },
+        onSeekSettled = { position -> updateLive { it.copy(positionMs = position) } },
+        nanoTime = nanoTime,
+    )
+    override val clock: PlaybackClock
+        get() = playbackClock
 
     private val videoPort: VideoPort = videoFactory(_state.asStateFlow()) { transform ->
         _state.update { if (it.status == PlayerStatus.RELEASED) it else it.copy(video = transform(it.video)) }
@@ -138,7 +153,7 @@ internal class DefaultPlayer(
     }
 
     override fun seekBy(deltaMs: Long) = enqueue {
-        seekNow((controller.currentPosition.value + deltaMs).coerceAtLeast(0L))
+        seekNow((_state.value.positionMs + deltaMs).coerceAtLeast(0L))
     }
 
     override fun seekAndPlay(positionMs: Long) = enqueue {
@@ -146,8 +161,17 @@ internal class DefaultPlayer(
     }
 
     override fun setRange(range: PlaybackRange?, loop: Boolean) = enqueue {
+        val positionBefore = controller.currentPosition.value
         controller.setPlaybackRange(LegacyMapping.toInternal(range))
         controller.setLooping(loop)
+        // The controller seeks to the range start when the position is outside the range.
+        val applied = controller.currentPlaybackRange()
+        if (applied != null && controller.totalDuration.value > 0L &&
+            (positionBefore < applied.startMs || positionBefore > applied.endMs)
+        ) {
+            markSeek(applied.startMs)
+            if (!controller.isSyncing.value) playbackClock.settleSeekNow()
+        }
         updateLive {
             it.copy(range = LegacyMapping.toPublic(controller.currentPlaybackRange()) ?: range, loop = loop)
         }
@@ -214,6 +238,7 @@ internal class DefaultPlayer(
         }
         commands.close()
         runCatching { videoPort.release() }
+        playbackClock.close()
         withContext(releaseDispatcher) { controller.closeNow() }
         scope.cancel()
     }
@@ -230,6 +255,7 @@ internal class DefaultPlayer(
         }
         val requested = source.tracks.map { it.copy(settings = it.settings.clamped()) }
         val pitchTempo = source.pitchTempo.clamped()
+        playbackClock.onLoadStarted()
         tracks.clear()
         requested.forEach { tracks[it.id] = it }
         videoUri = source.videoUri
@@ -272,6 +298,7 @@ internal class DefaultPlayer(
                         error = null,
                     )
                 }
+                playbackClock.onLoaded(controller.currentPosition.value, controller.isPlaying.value, pitchTempo.tempo)
                 videoPort.setSource(source.videoUri)
                 if (source.autoPlay) playNow()
                 AudioResult.Done
@@ -332,7 +359,26 @@ internal class DefaultPlayer(
         }
     }
 
-    private fun seekNow(positionMs: Long): Boolean = controller.seekToMs(positionMs.coerceAtLeast(0L))
+    /**
+     * Seeks to [positionMs] clamped like the controller does. [PlayerState.positionMs] shows the
+     * target at once and the clock reports `seeking` until the controller finishes syncing.
+     */
+    private fun seekNow(positionMs: Long): Boolean {
+        val requested = positionMs.coerceAtLeast(0L)
+        val duration = controller.totalDuration.value
+        if (duration <= 0L) return controller.seekToMs(requested)
+        val target = PlaybackRangePolicy.seekTarget(requested, controller.currentPlaybackRange(), duration)
+        markSeek(target)
+        val accepted = controller.seekToMs(target)
+        if (!accepted || !controller.isSyncing.value) playbackClock.settleSeekNow()
+        return accepted
+    }
+
+    /** Shows [target] immediately and starts the clock's seek; the caller settles it if the controller is idle. */
+    private fun markSeek(target: Long) {
+        playbackClock.beginSeek(target)
+        updateLive { it.copy(positionMs = target) }
+    }
 
     // ---------------------------------------------------------------------------------------
     // State
@@ -340,7 +386,20 @@ internal class DefaultPlayer(
 
     private fun observeController() {
         scope.launch {
-            controller.currentPosition.collect { position -> updateLive { it.copy(positionMs = position) } }
+            controller.currentPosition.collect { position ->
+                playbackClock.onPosition(position)
+                updateLive {
+                    // Mid-seek the controller may still report the pre-seek position.
+                    val target = playbackClock.seekTargetMs
+                    if (target != null && position != target) it else it.copy(positionMs = position)
+                }
+            }
+        }
+        scope.launch {
+            controller.isPlaying.collect { playing -> playbackClock.onPlaying(playing) }
+        }
+        scope.launch {
+            _state.map { it.pitchTempo.tempo }.distinctUntilChanged().collect { playbackClock.onTempo(it) }
         }
         scope.launch {
             controller.totalDuration.collect { duration ->

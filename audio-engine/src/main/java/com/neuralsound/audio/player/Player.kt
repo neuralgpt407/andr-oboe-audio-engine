@@ -16,6 +16,13 @@ interface Player {
     val state: StateFlow<PlayerState>
     val events: Flow<PlayerEvent>
 
+    /**
+     * Smooth playback position for frame-rate UI such as lyrics, and UI-rate position updates.
+     * After a seek, [PlayerState.positionMs] shows the target immediately and never reverts to
+     * the pre-seek position.
+     */
+    val clock: PlaybackClock
+
     /** Replaces whatever is loaded with [source]. */
     suspend fun load(source: PlayerSource): AudioResult<Unit>
 

@@ -156,6 +156,7 @@ internal class NativeMixerController(
     }
 
     private val _isSyncing = MutableStateFlow(false)
+    override val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
     private val _currentPosition = MutableStateFlow(0L)
     override val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()

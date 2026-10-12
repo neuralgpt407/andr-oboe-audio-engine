@@ -275,6 +275,33 @@ public final class com/neuralsound/audio/player/ChannelGain$Companion {
 	public final fun balance (F)Lcom/neuralsound/audio/player/ChannelGain;
 }
 
+public final class com/neuralsound/audio/player/ClockReading {
+	public fun <init> ()V
+	public fun <init> (JJZZFZLjava/lang/Long;J)V
+	public synthetic fun <init> (JJZZFZLjava/lang/Long;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()Z
+	public final fun component4 ()Z
+	public final fun component5 ()F
+	public final fun component6 ()Z
+	public final fun component7 ()Ljava/lang/Long;
+	public final fun component8 ()J
+	public final fun copy (JJZZFZLjava/lang/Long;J)Lcom/neuralsound/audio/player/ClockReading;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/ClockReading;JJZZFZLjava/lang/Long;JILjava/lang/Object;)Lcom/neuralsound/audio/player/ClockReading;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCapturedAtNanos ()J
+	public final fun getDiscontinuity ()J
+	public final fun getPositionMs ()J
+	public final fun getRate ()F
+	public final fun getSeekTargetMs ()Ljava/lang/Long;
+	public final fun getSeeking ()Z
+	public fun hashCode ()I
+	public final fun isAdvancing ()Z
+	public final fun isPlaying ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/neuralsound/audio/player/CompletionReason : java/lang/Enum {
 	public static final field END_OF_MEDIA Lcom/neuralsound/audio/player/CompletionReason;
 	public static final field END_OF_RANGE Lcom/neuralsound/audio/player/CompletionReason;
@@ -348,6 +375,12 @@ public final class com/neuralsound/audio/player/PitchTempo {
 public final class com/neuralsound/audio/player/PitchTempo$Companion {
 }
 
+public abstract interface class com/neuralsound/audio/player/PlaybackClock {
+	public abstract fun getReading ()Lkotlinx/coroutines/flow/StateFlow;
+	public abstract fun positionAt (J)J
+	public abstract fun positions (J)Lkotlinx/coroutines/flow/Flow;
+}
+
 public final class com/neuralsound/audio/player/PlaybackRange {
 	public fun <init> (JJ)V
 	public final fun clampTo (J)Lcom/neuralsound/audio/player/PlaybackRange;
@@ -367,6 +400,7 @@ public abstract interface class com/neuralsound/audio/player/Player {
 	public abstract fun appendTrack (Lcom/neuralsound/audio/player/Track;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun detach (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun diagnostics (Z)Lcom/neuralsound/audio/player/CallbackStats;
+	public abstract fun getClock ()Lcom/neuralsound/audio/player/PlaybackClock;
 	public abstract fun getEvents ()Lkotlinx/coroutines/flow/Flow;
 	public abstract fun getState ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getVideo ()Lcom/neuralsound/audio/player/VideoController;
