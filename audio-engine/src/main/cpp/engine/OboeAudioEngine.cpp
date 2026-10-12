@@ -25,6 +25,12 @@ constexpr int kAppendJoinWatchdogSeconds = 30;
 // audio out of the speaker. Sliced so shutdown can abort the wait quickly.
 constexpr int kStreamRestartDelayMs = 250;
 constexpr int kShutdownPollMs = 50;
+// google/oboe#2325 (open, unfixed as of 1.10.0): Oboe's own error-recovery
+// thread can still be inside FilterAudioStream::onErrorAfterClose() for a
+// stream after our close() call returns, with no Oboe API to wait for it.
+// Dropping our shared_ptr right away can free the object out from under
+// that thread. Delay the final release past its window instead.
+constexpr int kStreamOrphanDrainMs = 300;
 }
 
 OboeAudioEngine::OboeAudioEngine(int maxTracks)
@@ -1150,6 +1156,11 @@ void OboeAudioEngine::closeStream() {
         // harmless error return.
         stream->requestStop();
         stream->close();
+        // Time-based drain, not a real join (see kStreamOrphanDrainMs). Replace with an actual
+        // wait if Oboe ever exposes one for its internal error thread.
+        std::thread([stream]() mutable {
+            std::this_thread::sleep_for(std::chrono::milliseconds(kStreamOrphanDrainMs));
+        }).detach();
     }
 }
 
