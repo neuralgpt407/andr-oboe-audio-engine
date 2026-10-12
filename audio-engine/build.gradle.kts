@@ -5,8 +5,12 @@ import org.gradle.api.tasks.bundling.Zip
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlinx.binary.compatibility.validator)
     `maven-publish`
+}
+
+// Public-API check (`apiCheck` / `apiDump`); left out of JitPack builds, see the root build file.
+if (rootProject.extra["apiCheckEnabled"] == true) {
+    apply(plugin = "org.jetbrains.kotlinx.binary-compatibility-validator")
 }
 
 android {

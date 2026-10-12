@@ -36,7 +36,7 @@ dependencyResolutionManagement {
 
 // build.gradle.kts
 dependencies {
-    implementation("com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:v1.0.0")
+    implementation("com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:v1.0.1")
 }
 ```
 
@@ -185,7 +185,7 @@ val nativeDebugSymbols by configurations.creating {
 }
 
 dependencies {
-    add(nativeDebugSymbols.name, "com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:v1.0.0:native-symbols@zip")
+    add(nativeDebugSymbols.name, "com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:v1.0.1:native-symbols@zip")
 }
 ```
 

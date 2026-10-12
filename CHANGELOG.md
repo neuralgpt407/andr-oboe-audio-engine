@@ -1,6 +1,15 @@
 # Changelog
 
-## v1.0.0 — unreleased
+## v1.0.1
+
+Same code and API as v1.0.0; only the build changed, so the release can be published.
+
+- **JitPack build fixed.** The v1.0.0 tag never built on JitPack: its builds could not
+  resolve the public-API check plugin (binary-compatibility-validator, served from Maven
+  Central only). JitPack builds (`JITPACK=true`) now leave that plugin out; `apiCheck` still
+  runs in local builds and release qualification. Use `v1.0.1`; `v1.0.0` cannot be resolved.
+
+## v1.0.0 — not published (JitPack build failed; see v1.0.1)
 
 A new public API, designed for the three Neural Sound apps (FEAT-0001). It is not
 source-compatible with v0.2.0, which no app shipped on.
