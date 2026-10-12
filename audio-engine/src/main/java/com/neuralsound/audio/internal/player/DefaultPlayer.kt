@@ -13,6 +13,7 @@ import com.neuralsound.audio.internal.MixerPlaybackResult
 import com.neuralsound.audio.internal.MixerPreparationResult
 import com.neuralsound.audio.internal.OutputRoutePolicy
 import com.neuralsound.audio.player.AudioRoute
+import com.neuralsound.audio.player.CallbackStats
 import com.neuralsound.audio.player.CompletionReason
 import com.neuralsound.audio.player.FocusPolicy
 import com.neuralsound.audio.player.PitchTempo
@@ -178,6 +179,20 @@ internal class DefaultPlayer(
         if (next.boostDb != current.settings.boostDb) controller.setSourceBoostDb(id, next.boostDb)
         tracks[id] = current.copy(settings = next)
         publishTracks()
+    }
+
+    override fun diagnostics(reset: Boolean): CallbackStats? {
+        if (released.get()) return null
+        val raw = controller.callbackStats(reset) ?: return null
+        if (raw.size < 6) return null
+        return CallbackStats(
+            callbackMaxNs = raw[0],
+            callbackP99Ns = raw[1],
+            bufferPeriodNs = raw[2],
+            renderLoadP99 = raw[3] / 1000f,
+            underruns = raw[4],
+            callbacks = raw[5],
+        )
     }
 
     override suspend fun detach(): PlayerSnapshot? {

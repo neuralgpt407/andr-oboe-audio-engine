@@ -643,6 +643,9 @@ internal class NativeMixerController(
         }
     }
 
+    override fun callbackStats(reset: Boolean): LongArray? =
+        if (isPrepared()) engine.use(null) { handle -> nativeGetCallbackStats(handle, reset) } else null
+
     /** Verification tap: peak |sample| that reached the safety clamp since the last call. */
     fun consumeOutputPeak(): Float = engine.use(0f) { handle -> nativeConsumeOutputPeak(handle) }
 
@@ -1105,6 +1108,7 @@ internal class NativeMixerController(
     private external fun nativeSetSourceBoostDb(handle: Long, trackIndex: Int, sourceBoostDb: Int): Boolean
     private external fun nativeSetOutputAttenuation(handle: Long, attenuation: Float)
     private external fun nativeConsumeOutputPeak(handle: Long): Float
+    private external fun nativeGetCallbackStats(handle: Long, reset: Boolean): LongArray?
     private external fun nativeSetTempo(handle: Long, speed: Float)
     private external fun nativeSetPitchSemitones(handle: Long, semitones: Int)
     private external fun nativeGetPositionMs(handle: Long): Long

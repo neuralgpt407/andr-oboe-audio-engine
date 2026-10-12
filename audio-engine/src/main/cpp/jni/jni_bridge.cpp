@@ -109,6 +109,15 @@ jboolean nativeSetSourceBoostDb(JNIEnv*, jobject, jlong handle, jint index, jint
     return engine != nullptr && engine->setSourceBoostDb(index, db) ? JNI_TRUE : JNI_FALSE;
 }
 void nativeSetOutputAttenuation(JNIEnv*, jobject, jlong handle, jfloat attenuation) { if (auto* engine = fromHandle(handle)) engine->setOutputAttenuation(attenuation); }
+jlongArray nativeGetCallbackStats(JNIEnv* env, jobject, jlong handle, jboolean reset) {
+    auto* engine = fromHandle(handle);
+    if (engine == nullptr) return nullptr;
+    const auto stats = engine->callbackStats();
+    if (reset == JNI_TRUE) engine->resetCallbackStats();
+    jlongArray result = env->NewLongArray(static_cast<jsize>(stats.size()));
+    if (result != nullptr) env->SetLongArrayRegion(result, 0, static_cast<jsize>(stats.size()), stats.data());
+    return result;
+}
 jfloat nativeConsumeOutputPeak(JNIEnv*, jobject, jlong handle) { auto* engine = fromHandle(handle); return engine != nullptr ? engine->consumeOutputPeak() : 0.0f; }
 void nativeSetTempo(JNIEnv*, jobject, jlong handle, jfloat speed) { if (auto* engine = fromHandle(handle)) engine->setTempo(speed); }
 void nativeSetPitchSemitones(JNIEnv*, jobject, jlong handle, jint semitones) { if (auto* engine = fromHandle(handle)) engine->setPitchSemitones(semitones); }
@@ -466,6 +475,7 @@ JNINativeMethod kMethods[] = {
     {"nativeSetSourceBoostDb", "(JII)Z", reinterpret_cast<void*>(nativeSetSourceBoostDb)},
     {"nativeSetOutputAttenuation", "(JF)V", reinterpret_cast<void*>(nativeSetOutputAttenuation)},
     {"nativeConsumeOutputPeak", "(J)F", reinterpret_cast<void*>(nativeConsumeOutputPeak)},
+    {"nativeGetCallbackStats", "(JZ)[J", reinterpret_cast<void*>(nativeGetCallbackStats)},
     {"nativeSetTempo", "(JF)V", reinterpret_cast<void*>(nativeSetTempo)},
     {"nativeSetPitchSemitones", "(JI)V", reinterpret_cast<void*>(nativeSetPitchSemitones)},
     {"nativeGetPositionMs", "(J)J", reinterpret_cast<void*>(nativeGetPositionMs)},

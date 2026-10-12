@@ -227,6 +227,28 @@ public final class com/neuralsound/audio/player/AudioRoute {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/neuralsound/audio/player/CallbackStats {
+	public fun <init> (JJJFJJ)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()F
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun copy (JJJFJJ)Lcom/neuralsound/audio/player/CallbackStats;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/CallbackStats;JJJFJJILjava/lang/Object;)Lcom/neuralsound/audio/player/CallbackStats;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBufferPeriodNs ()J
+	public final fun getCallbackLoadP99 ()F
+	public final fun getCallbackMaxNs ()J
+	public final fun getCallbackP99Ns ()J
+	public final fun getCallbacks ()J
+	public final fun getRenderLoadP99 ()F
+	public final fun getUnderruns ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/neuralsound/audio/player/ChannelGain {
 	public static final field Center Lcom/neuralsound/audio/player/ChannelGain;
 	public static final field Companion Lcom/neuralsound/audio/player/ChannelGain$Companion;
@@ -344,6 +366,7 @@ public final class com/neuralsound/audio/player/PlaybackRange {
 public abstract interface class com/neuralsound/audio/player/Player {
 	public abstract fun appendTrack (Lcom/neuralsound/audio/player/Track;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun detach (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun diagnostics (Z)Lcom/neuralsound/audio/player/CallbackStats;
 	public abstract fun getEvents ()Lkotlinx/coroutines/flow/Flow;
 	public abstract fun getState ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getVideo ()Lcom/neuralsound/audio/player/VideoController;
@@ -360,6 +383,10 @@ public abstract interface class com/neuralsound/audio/player/Player {
 	public abstract fun setRange (Lcom/neuralsound/audio/player/PlaybackRange;Z)V
 	public abstract fun togglePlayPause ()V
 	public abstract fun updateTrack-htSER0o (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class com/neuralsound/audio/player/Player$DefaultImpls {
+	public static synthetic fun diagnostics$default (Lcom/neuralsound/audio/player/Player;ZILjava/lang/Object;)Lcom/neuralsound/audio/player/CallbackStats;
 }
 
 public abstract interface class com/neuralsound/audio/player/PlayerEvent {

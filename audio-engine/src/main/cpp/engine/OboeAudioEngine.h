@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioFifo.h"
+#include "LatencyHistogram.h"
 #include "OutputAttenuationRamp.h"
 #include "NativeDecoderThread.h"
 #include "PitchTempoProcessor.h"
@@ -64,6 +65,11 @@ public:
     void setOutputAttenuation(float attenuation);
     // Debug/verification tap: largest |sample| reaching the safety clamp since the last call.
     float consumeOutputPeak();
+
+    // Real-time diagnostics (NFR-1): {callbackMaxNs, callbackP99Ns, bufferPeriodNs,
+    // renderLoadP99Permille, underruns, callbacks}. Reset clears the histograms.
+    std::array<int64_t, 6> callbackStats() const;
+    void resetCallbackStats();
     void setTempo(float tempoSpeed);
     void setPitchSemitones(int semitones);
     int64_t getPositionMs() const;
@@ -187,6 +193,9 @@ private:
     neuralsound::audio::dsp::StereoLookaheadLimiter limiter_;
     neuralsound::audio::dsp::OutputAttenuationRamp outputAttenuation_;
     std::atomic<float> preClampPeak_{0.0f};
+    neuralsound::audio::LatencyHistogram<400> callbackNs_{12'500};      // 12.5 us buckets up to 5 ms
+    neuralsound::audio::LatencyHistogram<400> renderLoadPermille_{5};   // 0.5 % buckets up to 200 %
+    std::atomic<int64_t> bufferPeriodNs_{0};
     AudioFifo outputFifo_;
     std::array<int16_t, kMaxInputSamples> readBuffer_{};
     std::array<float, kMaxInputSamples> mixBuffer_{};

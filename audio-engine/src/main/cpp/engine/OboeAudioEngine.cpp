@@ -560,6 +560,23 @@ void OboeAudioEngine::setOutputAttenuation(float attenuation) {
     outputAttenuation_.setTarget(attenuation);
 }
 
+std::array<int64_t, 6> OboeAudioEngine::callbackStats() const {
+    return {
+        callbackNs_.max(),
+        callbackNs_.percentile(0.99),
+        bufferPeriodNs_.load(std::memory_order_relaxed),
+        renderLoadPermille_.percentile(0.99),
+        outputUnderrunCount_.load(std::memory_order_relaxed),
+        callbackNs_.count(),
+    };
+}
+
+void OboeAudioEngine::resetCallbackStats() {
+    callbackNs_.reset();
+    renderLoadPermille_.reset();
+    outputUnderrunCount_.store(0, std::memory_order_relaxed);
+}
+
 float OboeAudioEngine::consumeOutputPeak() {
     return preClampPeak_.exchange(0.0f, std::memory_order_relaxed);
 }
@@ -627,6 +644,7 @@ oboe::DataCallbackResult OboeAudioEngine::onAudioReady(
     void* audioData,
     int32_t numFrames
 ) {
+    const auto callbackStart = std::chrono::steady_clock::now();
     auto* out = static_cast<float*>(audioData);
     const int outputFrames = std::max<int32_t>(0, numFrames);
     const int sampleCount = outputFrames * kOutputChannelCount;
@@ -693,6 +711,11 @@ oboe::DataCallbackResult OboeAudioEngine::onAudioReady(
 
     totalFramesWritten_.fetch_add(outputFrames, std::memory_order_release);
     advanceSourcePositionForOutput(framesRead);
+    if (outputFrames > 0 && sampleRate_ > 0) {
+        bufferPeriodNs_.store(static_cast<int64_t>(outputFrames) * 1'000'000'000LL / sampleRate_, std::memory_order_relaxed);
+        callbackNs_.record(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - callbackStart).count());
+    }
 
     if (renderEndReached_.load(std::memory_order_acquire) &&
         outputFifo_.availableFrames() == 0) {
@@ -764,7 +787,14 @@ void OboeAudioEngine::renderLoop() {
         }
 
         bool allEnd = false;
+        const auto renderStart = std::chrono::steady_clock::now();
         const int framesRendered = renderNextChunk(allEnd);
+        if (framesRendered > 0 && sampleRate_ > 0) {
+            const int64_t elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - renderStart).count();
+            const int64_t chunkNs = static_cast<int64_t>(framesRendered) * 1'000'000'000LL / sampleRate_;
+            renderLoadPermille_.record(elapsedNs * 1000 / std::max<int64_t>(1, chunkNs));
+        }
         if (allEnd && framesRendered == 0 && !pitchTempoProcessor_.hasPendingOutput() &&
             !limiter_.hasPendingOutput()) {
             renderEndReached_.store(true, std::memory_order_release);

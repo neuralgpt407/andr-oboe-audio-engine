@@ -72,6 +72,9 @@ internal interface MixerController {
     fun currentPlaybackRange(): PlaybackRange?
     fun isPrepared(): Boolean
     fun closeNow()
+
+    /** Native {callbackMaxNs, callbackP99Ns, bufferPeriodNs, renderLoadP99Permille, underruns, callbacks}. */
+    fun callbackStats(reset: Boolean): LongArray? = null
 }
 
 internal enum class MixerCompletion {

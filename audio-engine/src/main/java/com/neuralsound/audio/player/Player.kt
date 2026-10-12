@@ -57,6 +57,9 @@ interface Player {
     /** Loads [snapshot] into this player, resuming position, settings and play state. */
     suspend fun restore(snapshot: PlayerSnapshot): AudioResult<Unit>
 
+    /** Pipeline timing since the last reset, or null when nothing is loaded. */
+    fun diagnostics(reset: Boolean = false): CallbackStats?
+
     /** Releases native resources. Returns after they are freed; later calls fail with `Released`. */
     suspend fun release()
 }
