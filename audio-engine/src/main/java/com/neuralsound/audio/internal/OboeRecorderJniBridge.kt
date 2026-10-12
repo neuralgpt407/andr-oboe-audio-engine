@@ -42,6 +42,7 @@ internal interface OboeRecorderNativeBridge {
         startOffsetFrames: Long,
     ): Boolean
     fun pauseWriting(owner: NativeRecorderSession, handle: Long)
+    fun setInputSaturation(owner: NativeRecorderSession, handle: Long, enabled: Boolean) = Unit
     fun stopWriting(owner: NativeRecorderSession, handle: Long): NativeRecordingResult
     fun getMicPeak(owner: NativeRecorderSession, handle: Long): Float
     fun getTelemetry(
@@ -83,6 +84,10 @@ internal object OboeRecorderJniBridge : OboeRecorderNativeBridge {
         startOffsetFrames: Long,
     ): Boolean {
         return owner.nativeStartWritingAtFrame(handle, outputPath, startOffsetFrames)
+    }
+
+    override fun setInputSaturation(owner: NativeRecorderSession, handle: Long, enabled: Boolean) {
+        owner.nativeSetInputSaturation(handle, enabled)
     }
 
     override fun pauseWriting(owner: NativeRecorderSession, handle: Long) {

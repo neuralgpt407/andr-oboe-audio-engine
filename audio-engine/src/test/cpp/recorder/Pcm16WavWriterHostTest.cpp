@@ -366,6 +366,28 @@ void testBoostAndCeiling(const std::filesystem::path& path) {
     require(std::abs(static_cast<int>(readLe16(bytes, 44 + 6 * 2))) <= 32113, "limiter ceiling remains at 0.98");
 }
 
+
+// FEAT-0001 S4-AS3: with saturation off, samples are written linearly (clamped only by PCM16).
+void testSaturationOffIsLinear(const std::filesystem::path& path) {
+    require(Pcm16WavWriter::createFullDurationDraft(path.string(), 1000, 20), "create linear draft");
+    Pcm16WavWriter writer;
+    writer.setSaturationEnabled(false);
+    require(writer.open(path.string(), 1000, 1, 0), "open linear draft");
+    std::vector<int16_t> quiet(12, 1000);
+    require(writer.write(quiet.data(), quiet.size()), "write quiet linear samples");
+    require(writer.close(), "close quiet linear samples");
+    auto bytes = readAll(path);
+    require(readLe16(bytes, 44 + 6 * 2) == 1000, "saturation off keeps quiet PCM unchanged");
+
+    writer.setSaturationEnabled(false);
+    require(writer.open(path.string(), 1000, 1, 0), "reopen linear draft");
+    std::vector<int16_t> loud(12, 32767);
+    require(writer.write(loud.data(), loud.size()), "write loud linear samples");
+    require(writer.close(), "close loud linear samples");
+    bytes = readAll(path);
+    require(readLe16(bytes, 44 + 6 * 2) == 32767, "saturation off reaches the PCM16 limit");
+}
+
 }
 
 int main() {
@@ -382,6 +404,7 @@ int main() {
     testFrameOffsetBeyondWavCapacityIsRejectedWithoutMutation(tempDir / "capacity.wav");
     testTenFramePreciseContinuationCycles(tempDir / "ten-cycles.wav");
     testBoostAndCeiling(tempDir / "gain.wav");
+    testSaturationOffIsLinear(tempDir / "linear.wav");
 
     std::cout << "PASS: Pcm16WavWriter exact-frame replacement/ten-cycle continuation checks\n";
     std::cout << "artifact=" << tempDir << '\n';

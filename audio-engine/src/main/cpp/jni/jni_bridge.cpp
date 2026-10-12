@@ -222,6 +222,10 @@ jboolean nativeRecorderStartWritingAtFrame(
     );
 }
 
+void nativeRecorderSetInputSaturation(JNIEnv*, jobject, jlong handle, jboolean enabled) {
+    if (auto* recorder = recorderFromHandle(handle)) recorder->setInputSaturation(enabled == JNI_TRUE);
+}
+
 void nativeRecorderPauseWriting(JNIEnv*, jobject, jlong handle) {
     if (auto* recorder = recorderFromHandle(handle)) {
         recorder->pauseWriting();
@@ -484,6 +488,7 @@ JNINativeMethod kRecorderMethods[] = {
     {"nativeGetWrittenDurationMs", "(J)J", reinterpret_cast<void*>(nativeRecorderGetWrittenDurationMs)},
     {"nativeGetSampleRate", "(J)I", reinterpret_cast<void*>(nativeRecorderGetSampleRate)},
     {"nativeHasFailed", "(J)Z", reinterpret_cast<void*>(nativeRecorderHasFailed)},
+    {"nativeSetInputSaturation", "(JZ)V", reinterpret_cast<void*>(nativeRecorderSetInputSaturation)},
     {"nativeGetFailureSnapshot", "(J)Lcom/neuralsound/audio/internal/NativeRecorderFailureSnapshot;", reinterpret_cast<void*>(nativeRecorderGetFailureSnapshot)},
     {"nativeReleaseMicSession", "(J)V", reinterpret_cast<void*>(nativeRecorderReleaseMicSession)},
     {"nativeRelease", "(J)V", reinterpret_cast<void*>(nativeRecorderRelease)},

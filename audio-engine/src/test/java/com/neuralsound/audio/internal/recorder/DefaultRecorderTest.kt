@@ -127,6 +127,18 @@ class DefaultRecorderTest {
     }
 
     @Test
+    fun saturationIsOffUnlessTheTakeAsksForIt() = runTest {
+        val session = FakeSession()
+        val recorder = recorder(session)
+
+        recorder.record(TakeRequest(File(dir, "dry.wav"))).getOrNull()!!.stop()
+        recorder.record(TakeRequest(File(dir, "warm.wav"), saturation = true)).getOrNull()!!.stop()
+
+        assertEquals(listOf(false, true), session.saturation)
+        recorder.release()
+    }
+
+    @Test
     fun meterReportsPeakAndClipping() = runTest {
         val session = FakeSession()
         val recorder = recorder(session)
@@ -211,6 +223,12 @@ class DefaultRecorderTest {
             segmentBuckets = FloatArray(0)
             status.value = LegacyStatus.WRITING
             return RecorderOperationResult.Success
+        }
+
+        val saturation = mutableListOf<Boolean>()
+
+        override fun setInputSaturation(enabled: Boolean) {
+            saturation += enabled
         }
 
         override fun startWriting(request: RecordingRequest) = error("ms offsets are not used")

@@ -8,5 +8,8 @@ internal interface FramePreciseRecorderSession : RecorderSession {
     val state: StateFlow<RecorderState>
     val currentFailure: StateFlow<RecorderFailure?>
 
+    /** Applies to the next take; the recorder default is saturation on. */
+    fun setInputSaturation(enabled: Boolean) = Unit
+
     fun startWriting(request: FrameRecordingRequest): RecorderOperationResult
 }

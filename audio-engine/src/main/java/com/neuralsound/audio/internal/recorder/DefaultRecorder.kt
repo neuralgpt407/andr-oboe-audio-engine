@@ -200,6 +200,7 @@ internal class DefaultRecorder(
 
     private suspend fun startSegmentLocked(take: DefaultTake, frame: Long): AudioResult<Unit> {
         val result = withContext(ioDispatcher) {
+            session.setInputSaturation(take.request.saturation)
             session.startWriting(FrameRecordingRequest(take.request.file, frame))
         }.toAudioResult()
         if (result.isOk) {

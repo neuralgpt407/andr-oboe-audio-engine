@@ -34,6 +34,8 @@ public:
         int64_t startOffsetFrames
     );
     bool write(const int16_t* samples, size_t frameCount);
+    // Soft tanh saturation of the input (legacy default on); FEAT-0001 makes it opt-in per take.
+    void setSaturationEnabled(bool enabled) { saturationEnabled_ = enabled; }
     bool close();
 
     int64_t framesWritten() const;
@@ -41,6 +43,7 @@ public:
     const std::string& lastError() const;
 
 private:
+    bool saturationEnabled_ = true;
     bool parseExistingFile(Pcm16WavInfo* info);
     bool writeHeader(uint32_t dataBytes);
     bool updateHeader();

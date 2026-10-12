@@ -195,6 +195,12 @@ internal class NativeRecorderSession internal constructor(
         }
     }
 
+    override fun setInputSaturation(enabled: Boolean) {
+        operationLock.withLock {
+            handle.use { currentHandle -> nativeBridge.setInputSaturation(this, currentHandle, enabled) }
+        }
+    }
+
     override fun pauseWriting(): RecorderOperationResult {
         return operationLock.withLock {
             val unavailable = unavailableFailureOrNull()
@@ -469,6 +475,9 @@ internal class NativeRecorderSession internal constructor(
 
     @JvmName("nativePauseWriting")
     internal external fun nativePauseWriting(handle: Long)
+
+    @JvmName("nativeSetInputSaturation")
+    internal external fun nativeSetInputSaturation(handle: Long, enabled: Boolean)
 
     @JvmName("nativeStopWriting")
     internal external fun nativeStopWriting(handle: Long): LongArray

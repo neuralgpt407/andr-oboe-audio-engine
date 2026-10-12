@@ -48,6 +48,7 @@ public:
 
     bool startMicSession();
     bool startWriting(const std::string& outputPath, int64_t startOffsetMs);
+    void setInputSaturation(bool enabled) { inputSaturation_.store(enabled, std::memory_order_release); }
     bool startWritingAtFrame(const std::string& outputPath, int64_t startOffsetFrames);
     void pauseWriting();
     OboeRecordingResult stopWriting();
@@ -124,4 +125,5 @@ private:
     std::atomic<int64_t> acceptedFrames_{0};
     std::atomic<uint64_t> takeId_{0};
     std::atomic<int> sampleRate_{0};
+    std::atomic<bool> inputSaturation_{true};
 };

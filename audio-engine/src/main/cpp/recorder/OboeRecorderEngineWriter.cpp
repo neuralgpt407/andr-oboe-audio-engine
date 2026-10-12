@@ -83,6 +83,7 @@ bool OboeRecorderEngine::startWritingLocked(
             promise = std::move(startPromise)
         ]() mutable {
             Pcm16WavWriter writer;
+            writer.setSaturationEnabled(inputSaturation_.load(std::memory_order_acquire));
             const int rate = sampleRate_.load(std::memory_order_acquire);
             const bool opened = startOffsetUnit == StartOffsetUnit::PcmFrames
                 ? writer.openAtFrame(outputPath, rate, 1, startOffset)

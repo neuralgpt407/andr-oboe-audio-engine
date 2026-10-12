@@ -196,7 +196,7 @@ bool Pcm16WavWriter::write(const int16_t* samples, size_t frameCount) {
         if (!readOriginalSample(writeCursorBytes_ + static_cast<int64_t>(pendingSamples_.size()) * kBytesPerSample, &original)) {
             return false;
         }
-        const int16_t replacement = boostSample(samples[index]);
+        const int16_t replacement = saturationEnabled_ ? boostSample(samples[index]) : samples[index];
         const int64_t sampleIndex = framesWritten_ + static_cast<int64_t>(pendingSamples_.size());
         if (sampleIndex < fadeFrames) {
             const double progress = fadeFrames == 1 ? 1.0 : static_cast<double>(sampleIndex) / (fadeFrames - 1);
