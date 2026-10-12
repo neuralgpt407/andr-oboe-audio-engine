@@ -9,6 +9,8 @@ baseline against v0.x; from v1.0.0 on, `apiCheck` must show additions only.
 export ANDROID_HOME=/absolute/path/to/Android/sdk
 candidate_repository="$(mktemp -d)"
 
+# Start clean: stale CMake configurations leave duplicate libraries for the symbols zip.
+./gradlew :audio-engine:clean
 ./gradlew :audio-engine:apiCheck
 ./gradlew :audio-engine:publishToMavenLocal \
   -Dmaven.repo.local="$candidate_repository" \
