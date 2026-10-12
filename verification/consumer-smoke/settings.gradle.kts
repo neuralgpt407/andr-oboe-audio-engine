@@ -30,5 +30,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "oboe-release-consumer-smoke"
+rootProject.name = "audio-engine-consumer-smoke"
 include(":consumer")
