@@ -17,6 +17,14 @@ interface Player {
     val events: Flow<PlayerEvent>
 
     /**
+     * The current mix: every loaded track's applied (clamped) settings as [TrackMix], solo flags
+     * included, in load/append order, plus the applied pitch/tempo, range and loop. Tracks whose
+     * settings are still waiting for [appendTrack] (see [applyMix]) are not listed. Feed it to
+     * [PlayerMix.toText] to persist it and to [applyMix] to restore it.
+     */
+    val mix: StateFlow<PlayerMix>
+
+    /**
      * Smooth playback position for frame-rate UI such as lyrics, and UI-rate position updates.
      * After a seek, [PlayerState.positionMs] shows the target immediately and never reverts to
      * the pre-seek position.
@@ -52,12 +60,35 @@ interface Player {
     /** Changes one track's settings in a single call, e.g. `updateTrack(id) { it.copy(muted = true) }`. */
     fun updateTrack(id: TrackId, transform: (TrackSettings) -> TrackSettings)
 
+    /**
+     * Applies a whole [PlayerMix] as one queued command. For track ids that are loaded, settings
+     * are clamped like [updateTrack] and solo flags set; ids not loaded yet are remembered and
+     * applied (then forgotten) when that id is added with [appendTrack], overriding the settings
+     * on the appended [Track]. Loaded tracks absent from [mix] are left unchanged. Pitch/tempo,
+     * range and loop are applied too. The result lists the ids applied now and those pending.
+     *
+     * Called before [load] it succeeds with every id pending; the mix (including pitch/tempo,
+     * range and loop) is then applied by the next [load] and overrides that source's own values.
+     * Any other [load] starts with no solo and no pending mix. Fails with `Released` after [release].
+     */
+    suspend fun applyMix(mix: PlayerMix): AudioResult<MixApplyResult>
+
+    /**
+     * Solos or un-solos a track. While any track is soloed, only soloed tracks are audible;
+     * a track you muted stays silent even when soloed. [PlayerState] keeps reporting the user's
+     * own mute, never the solo-implied silence. Unknown ids are ignored.
+     */
+    fun setSolo(id: TrackId, solo: Boolean)
+
     /** Controls the optional video surface. */
     val video: VideoController
 
     /**
      * Releases this player and returns what is needed to continue in a new player
      * (see [restore]), or null if nothing was loaded.
+     *
+     * The snapshot does not carry solo or pending mix settings: save [mix] before detaching and
+     * call [applyMix] on the new player after [restore] to bring them back.
      */
     suspend fun detach(): PlayerSnapshot?
 

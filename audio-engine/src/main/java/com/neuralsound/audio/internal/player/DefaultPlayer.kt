@@ -21,13 +21,16 @@ import com.neuralsound.audio.player.PitchTempo
 import com.neuralsound.audio.player.PlaybackClock
 import com.neuralsound.audio.player.PlaybackRange
 import com.neuralsound.audio.player.Player
+import com.neuralsound.audio.player.MixApplyResult
 import com.neuralsound.audio.player.PlayerEvent
+import com.neuralsound.audio.player.PlayerMix
 import com.neuralsound.audio.player.PlayerOptions
 import com.neuralsound.audio.player.PlayerSnapshot
 import com.neuralsound.audio.player.PlayerSource
 import com.neuralsound.audio.player.PlayerState
 import com.neuralsound.audio.player.PlayerStatus
 import com.neuralsound.audio.player.Track
+import com.neuralsound.audio.player.TrackMix
 import com.neuralsound.audio.player.TrackSettings
 import com.neuralsound.audio.player.TrackState
 import com.neuralsound.audio.internal.video.NoVideoPort
@@ -35,7 +38,6 @@ import com.neuralsound.audio.internal.video.VideoPort
 import com.neuralsound.audio.player.VideoController
 import com.neuralsound.audio.player.VideoState
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -76,7 +78,14 @@ internal class DefaultPlayer(
     nanoTime: () -> Long = System::nanoTime,
 ) : Player {
     private val released = AtomicBoolean(false)
-    private val pendingPitchTempo = AtomicReference<PitchTempo?>(null)
+    private class PitchSlot(val value: PitchTempo, val barrier: Long)
+
+    /** Latest coalesced pitch/tempo, guarded by [pitchLock]; never coalesced across a [barrier] bump. */
+    private var pitchSlot: PitchSlot? = null
+    private val pitchLock = Any()
+
+    /** Bumped on the caller's thread by commands that set pitch/tempo themselves (load, applyMix). */
+    private val barrier = java.util.concurrent.atomic.AtomicLong(0L)
     private val scope = CoroutineScope(SupervisorJob() + commandDispatcher)
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val pending = mutableSetOf<CompletableDeferred<AudioResult<*>>>()
@@ -110,6 +119,21 @@ internal class DefaultPlayer(
     private val tracks = linkedMapOf<TrackId, Track>()
     private var videoUri: Uri? = null
 
+    /** Tracks whose solo is on (only ever contains loaded track ids). */
+    private val soloed = linkedSetOf<TrackId>()
+
+    /** Mix settings for ids that are not loaded yet; applied (and removed) when that id is appended. */
+    private val pendingMix = linkedMapOf<TrackId, TrackMix>()
+
+    /** Last mute value pushed to the controller per track, so only changes are sent. */
+    private val engineMuted = hashMapOf<TrackId, Boolean>()
+
+    /** Pitch/tempo/range/loop from an [applyMix] issued before [load]; consumed by the next load. */
+    private var stagedGlobals: PlayerMix? = null
+
+    private val _mix = MutableStateFlow(PlayerMix())
+    override val mix: StateFlow<PlayerMix> = _mix.asStateFlow()
+
     init {
         scope.launch {
             for (command in commands) {
@@ -125,7 +149,12 @@ internal class DefaultPlayer(
         observeController()
     }
 
-    override suspend fun load(source: PlayerSource): AudioResult<Unit> = call {
+    override suspend fun load(source: PlayerSource): AudioResult<Unit> {
+        barrier.incrementAndGet()
+        return loadQueued(source)
+    }
+
+    private suspend fun loadQueued(source: PlayerSource): AudioResult<Unit> = call {
         loadNow(source)
     }
 
@@ -160,7 +189,9 @@ internal class DefaultPlayer(
         if (seekNow(positionMs)) playNow()
     }
 
-    override fun setRange(range: PlaybackRange?, loop: Boolean) = enqueue {
+    override fun setRange(range: PlaybackRange?, loop: Boolean) = enqueue { applyRangeNow(range, loop) }
+
+    private fun applyRangeNow(range: PlaybackRange?, loop: Boolean) {
         val positionBefore = controller.currentPosition.value
         controller.setPlaybackRange(LegacyMapping.toInternal(range))
         controller.setLooping(loop)
@@ -175,6 +206,7 @@ internal class DefaultPlayer(
         updateLive {
             it.copy(range = LegacyMapping.toPublic(controller.currentPlaybackRange()) ?: range, loop = loop)
         }
+        publishMix()
     }
 
     /**
@@ -183,26 +215,129 @@ internal class DefaultPlayer(
      */
     override fun setPitchTempo(pitchTempo: PitchTempo) {
         if (released.get()) return
-        if (pendingPitchTempo.getAndSet(pitchTempo.clamped()) != null) return
+        val stamp = barrier.get()
+        val needsCommand = synchronized(pitchLock) {
+            val previous = pitchSlot
+            pitchSlot = PitchSlot(pitchTempo.clamped(), stamp)
+            previous == null || previous.barrier != stamp
+        }
+        if (!needsCommand) return
         enqueue {
-            val latest = pendingPitchTempo.getAndSet(null) ?: return@enqueue
+            val latest = synchronized(pitchLock) {
+                val slot = pitchSlot
+                if (slot != null && slot.barrier == stamp) slot.also { pitchSlot = null } else null
+            }?.value ?: return@enqueue
             controller.setTempo(latest.tempo)
             controller.setPitchSemitones(latest.semitones)
             updateLive { it.copy(pitchTempo = latest) }
+            publishMix()
         }
+    }
+
+    private fun applyPitchTempoNow(pitchTempo: PitchTempo) {
+        controller.setTempo(pitchTempo.tempo)
+        controller.setPitchSemitones(pitchTempo.semitones)
+        updateLive { it.copy(pitchTempo = pitchTempo) }
     }
 
     override fun updateTrack(id: TrackId, transform: (TrackSettings) -> TrackSettings) = enqueue {
         val current = tracks[id] ?: return@enqueue
         val next = transform(current.settings).clamped()
         if (next == current.settings) return@enqueue
-        if (next.volume != current.settings.volume) controller.setVolume(id, next.volume)
-        if (next.muted != current.settings.muted) controller.setMuted(id, next.muted)
-        if (next.balance != current.settings.balance) controller.setChannelGain(id, LegacyMapping.toInternal(next.balance))
-        if (next.offsetMs != current.settings.offsetMs) controller.setTrackOffset(id, next.offsetMs)
-        if (next.boostDb != current.settings.boostDb) controller.setSourceBoostDb(id, next.boostDb)
+        pushSettings(id, current.settings, next)
         tracks[id] = current.copy(settings = next)
+        syncMutes()
         publishTracks()
+        publishMix()
+    }
+
+    override fun setSolo(id: TrackId, solo: Boolean) = enqueue {
+        val staged = pendingMix[id]
+        when {
+            id in tracks -> {
+                if (solo == (id in soloed)) return@enqueue
+                if (solo) soloed += id else soloed -= id
+                syncMutes()
+            }
+            staged != null -> pendingMix[id] = staged.copy(solo = solo)
+            else -> return@enqueue
+        }
+        publishMix()
+    }
+
+    override suspend fun applyMix(mix: PlayerMix): AudioResult<MixApplyResult> {
+        barrier.incrementAndGet()
+        return call { AudioResult.Ok(applyMixNow(mix)) }
+    }
+
+    /** Sends the changed non-mute settings to the controller; mute goes through [syncMutes]. */
+    private fun pushSettings(id: TrackId, from: TrackSettings, to: TrackSettings) {
+        if (to.volume != from.volume) controller.setVolume(id, to.volume)
+        if (to.balance != from.balance) controller.setChannelGain(id, LegacyMapping.toInternal(to.balance))
+        if (to.offsetMs != from.offsetMs) controller.setTrackOffset(id, to.offsetMs)
+        if (to.boostDb != from.boostDb) controller.setSourceBoostDb(id, to.boostDb)
+    }
+
+    private fun effectiveMuted(id: TrackId, userMuted: Boolean, solos: Set<TrackId> = soloed): Boolean =
+        userMuted || (solos.isNotEmpty() && id !in solos)
+
+    /** Pushes the effective mute (user mute, or silenced by another track's solo) of every track that changed. */
+    private fun syncMutes() {
+        for ((id, track) in tracks) {
+            val effective = effectiveMuted(id, track.settings.muted)
+            if (engineMuted[id] != effective) {
+                controller.setMuted(id, effective)
+                engineMuted[id] = effective
+            }
+        }
+    }
+
+    private fun applyMixNow(mix: PlayerMix): MixApplyResult {
+        val wanted = mix.tracks.mapValuesTo(linkedMapOf()) { (_, m) ->
+            TrackMix.from(m.toTrackSettings().clamped(), m.solo)
+        }
+        val pitchTempo = mix.pitchTempo.clamped()
+        if (!controller.isPrepared()) {
+            // Nothing loaded: stage everything for the next load.
+            stagedGlobals = PlayerMix(pitchTempo = pitchTempo, range = mix.range, loop = mix.loop)
+            pendingMix.clear()
+            pendingMix.putAll(wanted)
+            publishMix()
+            return MixApplyResult(applied = emptySet(), pending = wanted.keys.toSet())
+        }
+        val applied = linkedSetOf<TrackId>()
+        val waiting = linkedSetOf<TrackId>()
+        for ((id, m) in wanted) {
+            val current = tracks[id]
+            if (current == null) {
+                pendingMix[id] = m
+                waiting += id
+                continue
+            }
+            val next = m.toTrackSettings()
+            pushSettings(id, current.settings, next)
+            tracks[id] = current.copy(settings = next)
+            if (m.solo) soloed += id else soloed -= id
+            applied += id
+        }
+        applyPitchTempoNow(pitchTempo)
+        applyRangeNow(mix.range, mix.loop)
+        syncMutes()
+        publishTracks()
+        publishMix()
+        return MixApplyResult(applied = applied, pending = waiting)
+    }
+
+    private fun publishMix() {
+        val state = _state.value
+        val live = state.status !in INACTIVE
+        val staged = stagedGlobals
+        _mix.value = PlayerMix(
+            tracks = tracks.mapValuesTo(linkedMapOf()) { (id, track) -> TrackMix.from(track.settings, id in soloed) },
+            pitchTempo = if (live) state.pitchTempo else staged?.pitchTempo ?: PitchTempo(),
+            range = if (live) state.range else staged?.range,
+            loop = if (live) state.loop else staged?.loop ?: false,
+        )
     }
 
     override fun diagnostics(reset: Boolean): CallbackStats? {
@@ -253,8 +388,27 @@ internal class DefaultPlayer(
         if (source.tracks.size > options.maxTracks) {
             return AudioResult.Err(AudioError.TrackLimitExceeded(options.maxTracks))
         }
-        val requested = source.tracks.map { it.copy(settings = it.settings.clamped()) }
-        val pitchTempo = source.pitchTempo.clamped()
+        // A new source starts with no solo and no pending mix, except what applyMix staged before this load.
+        val staged = stagedGlobals
+        val carried = if (staged != null) pendingMix.toMap() else emptyMap()
+        stagedGlobals = null
+        pendingMix.clear()
+        soloed.clear()
+        engineMuted.clear()
+        val requested = source.tracks.map {
+            val fromMix = carried[it.id]
+            it.copy(settings = (fromMix?.toTrackSettings() ?: it.settings).clamped())
+        }
+        carried.forEach { (id, m) ->
+            if (requested.any { it.id == id }) {
+                if (m.solo) soloed += id
+            } else {
+                pendingMix[id] = m
+            }
+        }
+        val pitchTempo = (staged?.pitchTempo ?: source.pitchTempo).clamped()
+        val loadRange = if (staged != null) staged.range else source.range
+        val loadLoop = if (staged != null) staged.loop else source.loop
         playbackClock.onLoadStarted()
         tracks.clear()
         requested.forEach { tracks[it.id] = it }
@@ -265,16 +419,17 @@ internal class DefaultPlayer(
                 positionMs = source.startAtMs,
                 tracks = trackStates(),
                 pitchTempo = pitchTempo,
-                range = source.range,
-                loop = source.loop,
+                range = loadRange,
+                loop = loadLoop,
             )
         }
-        controller.setPlaybackRange(LegacyMapping.toInternal(source.range))
+        publishMix()
+        controller.setPlaybackRange(LegacyMapping.toInternal(loadRange))
         val result = try {
             controller.preparePlayers(
                 tracks = requested.associate { it.id to it.uri },
                 startPositionMs = source.startAtMs,
-                looping = source.loop,
+                looping = loadLoop,
                 effects = LegacyMapping.toInternal(pitchTempo),
                 trackOffsetsMs = requested.associate { it.id to it.settings.offsetMs },
                 initialVolumes = requested.associate { it.id to it.settings.volume },
@@ -288,6 +443,7 @@ internal class DefaultPlayer(
         return when (result) {
             MixerPreparationResult.Success -> {
                 requested.forEach { applyPostJoinSettings(it) }
+                publishMix()
                 updateLive {
                     it.copy(
                         status = PlayerStatus.READY,
@@ -298,6 +454,7 @@ internal class DefaultPlayer(
                         error = null,
                     )
                 }
+                publishMix()
                 playbackClock.onLoaded(controller.currentPosition.value, controller.isPlaying.value, pitchTempo.tempo)
                 videoPort.setSource(source.videoUri)
                 if (source.autoPlay) playNow()
@@ -317,20 +474,28 @@ internal class DefaultPlayer(
         if (track.id !in tracks && tracks.size >= options.maxTracks) {
             return AudioResult.Err(AudioError.TrackLimitExceeded(options.maxTracks))
         }
-        val clamped = track.copy(settings = track.settings.clamped())
+        val staged = pendingMix[track.id]
+        val clamped = track.copy(settings = (staged?.toTrackSettings() ?: track.settings).clamped())
+        val solosAfter = if (staged?.solo == true) soloed + clamped.id else soloed
         val result = controller.appendTrack(
             type = clamped.id,
             uri = clamped.uri,
             initialVolume = clamped.settings.volume,
-            muted = clamped.settings.muted,
+            muted = effectiveMuted(clamped.id, clamped.settings.muted, solosAfter),
             initialChannelGain = LegacyMapping.toInternal(clamped.settings.balance),
             initialOffsetMs = clamped.settings.offsetMs,
         )
         return when (result) {
             MixerAppendResult.Success -> {
-                applyPostJoinSettings(clamped)
+                pendingMix.remove(clamped.id)
+                if (staged != null) {
+                    if (staged.solo) soloed += clamped.id else soloed -= clamped.id
+                }
                 tracks[clamped.id] = clamped
+                applyPostJoinSettings(clamped)
+                syncMutes()
                 updateLive { it.copy(tracks = trackStates(), durationMs = controller.totalDuration.value) }
+                publishMix()
                 AudioResult.Done
             }
             is MixerAppendResult.Failure -> {
@@ -345,7 +510,9 @@ internal class DefaultPlayer(
 
     /** Settings the controller does not take at prepare/append time. */
     private fun applyPostJoinSettings(track: Track) {
-        controller.setMuted(track.id, track.settings.muted)
+        val muted = effectiveMuted(track.id, track.settings.muted)
+        controller.setMuted(track.id, muted)
+        engineMuted[track.id] = muted
         if (track.settings.boostDb != 0) controller.setSourceBoostDb(track.id, track.settings.boostDb)
     }
 

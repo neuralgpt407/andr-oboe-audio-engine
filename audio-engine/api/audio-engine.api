@@ -411,10 +411,12 @@ public final class com/neuralsound/audio/player/PlaybackRange {
 
 public abstract interface class com/neuralsound/audio/player/Player {
 	public abstract fun appendTrack (Lcom/neuralsound/audio/player/Track;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun applyMix (Lcom/neuralsound/audio/player/PlayerMix;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun detach (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun diagnostics (Z)Lcom/neuralsound/audio/player/CallbackStats;
 	public abstract fun getClock ()Lcom/neuralsound/audio/player/PlaybackClock;
 	public abstract fun getEvents ()Lkotlinx/coroutines/flow/Flow;
+	public abstract fun getMix ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getState ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getVideo ()Lcom/neuralsound/audio/player/VideoController;
 	public abstract fun load (Lcom/neuralsound/audio/player/PlayerSource;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -428,6 +430,7 @@ public abstract interface class com/neuralsound/audio/player/Player {
 	public abstract fun seekToFraction (F)V
 	public abstract fun setPitchTempo (Lcom/neuralsound/audio/player/PitchTempo;)V
 	public abstract fun setRange (Lcom/neuralsound/audio/player/PlaybackRange;Z)V
+	public abstract fun setSolo-htSER0o (Ljava/lang/String;Z)V
 	public abstract fun togglePlayPause ()V
 	public abstract fun updateTrack-htSER0o (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 }
