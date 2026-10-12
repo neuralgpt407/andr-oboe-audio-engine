@@ -1,7 +1,12 @@
 package com.neuralsound.audio
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import com.neuralsound.audio.internal.NativeMixerController
+import com.neuralsound.audio.internal.NativeRecorderSession
+import com.neuralsound.audio.internal.recorder.DefaultRecorder
 import com.neuralsound.audio.internal.player.DefaultPlayer
 import com.neuralsound.audio.internal.waveform.DefaultWaveformAnalyzer
 import com.neuralsound.audio.player.Player
@@ -34,9 +39,13 @@ class AudioEngine private constructor(context: Context) {
     )
 
     /** Creates an independent recorder. Release it with [Recorder.release] when the owner goes away. */
-    fun newRecorder(): Recorder {
-        TODO("Implemented in FEAT-0001 Task 21")
-    }
+    fun newRecorder(): Recorder = DefaultRecorder(
+        session = NativeRecorderSession(),
+        hasRecordPermission = {
+            ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        },
+    )
 
     /** Offline file waveform analysis. */
     val waveforms: WaveformAnalyzer by lazy { DefaultWaveformAnalyzer() }
