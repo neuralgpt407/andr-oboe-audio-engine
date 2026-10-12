@@ -138,6 +138,33 @@ val waveform = engine.waveforms.analyze(parcelFileDescriptor).getOrNull()
 - **Disconnects.** If the input device disconnects, the partial take is finalized as a valid
   WAV and `RecorderEvent.InputLost` is emitted.
 
+**Clock, mix and lifecycle** (v1.0.2 line)
+- **Clock.** Use `player.clock.positionAt(frameNanos)` inside `withFrameNanos` for lyrics and
+  scrubbers, and `player.clock.positions(250)` for UI-rate text. A seek shows its clamped target
+  at once (`reading.seeking`, `seekTargetMs`). `reading.discontinuity` rises by one on each
+  pause, resume or seek, so UIs can snap instead of animating.
+- **Mix.** `player.mix` is the applied mix. Persist `mix.value.toText()` and restore with
+  `PlayerMix.fromText(text)` → `applyMix(...)`. You can call it before `load` or before tracks are
+  appended: pending ids are applied when they arrive. Solo uses the effective mute
+  `muted || (anySolo && !solo)`; `PlayerState` keeps the user's own mute.
+- **Lifecycle.** `player.bindTo(owner)` pauses on app background and releases on destroy (not on
+  rotation). For a ViewModel-owned player use `player.releaseWith(viewModelScope)`.
+
+**Export**
+- `ExportAudioGraph.build(player.mix.value, inputs)` returns the ffmpeg `-filter_complex` that
+  matches what the player plays. It covers offsets, balance, boost, solo/mute, range, tempo/pitch
+  and the `alimiter` ceiling (`AudioLimits.LIMITER_CEILING`). Map `[outputLabel]` and run it with
+  ffmpeg-kit. `outputDurationMs` predicts the result length.
+
+**Waveforms and drafts**
+- **Waveform cache.** `engine.waveformCache.load(uri)` emits `Loading` → `Ready`/`Failed`. A
+  copy of the same file is a cache hit (content key), and concurrent requests share one analysis.
+- **Drafts.** `recorder.openDraft(DraftRequest(file, foreground = MicForeground(id) { ctx -> notification }))`
+  gives record/pause/resume, `rerecordFrom(frame)`, then `commit(destination)` or `discard()`.
+  Watch `draft.state` (status, waveform, input level, `problem`). Edits are atomic. With
+  `MicForeground` the SDK runs its own microphone foreground service (declared in the SDK
+  manifest), so the app declares no service.
+
 ## Migrating from the app-local engines
 
 | App-local engine (`AudioMixerManager`) | `audio-engine` |
@@ -154,6 +181,11 @@ val waveform = engine.waveforms.analyze(parcelFileDescriptor).getOrNull()
 | `attachVideoPresentation` / `detachVideoPresentation` | `player.video.attachPresentation()` / `detachPresentation()` |
 | `OboeRecorderEngine.startMicSession` / `startWritingAtFrame` / `telemetry(i)` | `recorder.openMic()` / `record(TakeRequest(...))` / `take.waveform` |
 | `NativeAudioWaveformAnalyzer.analyze(fd)` | `engine.waveforms.analyze(fd)` |
+| Position ticker / lyrics frame clock | `player.clock.positions(ms)` / `positionAt(frameNanos)` |
+| App-side mix state, solo, persisted volumes JSON | `player.mix`, `setSolo`, `PlayerMix.toText/fromText`, `applyMix` |
+| App-built ffmpeg mix filter (`amix`, `atempo`, `alimiter`, …) | `ExportAudioGraph.build(mix, inputs).filterComplex` |
+| App waveform cache / copy detection | `engine.waveformCache.load(uri)` |
+| Recording service + pause/resume/re-record WAV splicing | `recorder.openDraft(DraftRequest(...))` with `MicForeground` |
 
 ## Build and verify
 

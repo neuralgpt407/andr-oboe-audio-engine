@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased (v1.0.2 line, FEAT-0002)
+
+Additive only: no existing signature, data-class constructor or enum changes (ADR 0002).
+These APIs let an app keep only UI, state and persistence while the SDK owns the audio pipeline.
+
+### Playback
+- **`Player.clock`** (`PlaybackClock`): a `reading` StateFlow (`ClockReading`), `positionAt(frameNanos)`
+  for frame-rate UI such as lyrics, and `positions(intervalMs)`. Seeks show their clamped target
+  on the caller thread and never revert. `discontinuity` increases once per pause, resume or seek.
+- **Mix model.** `Player.mix` (`PlayerMix` of `TrackMix` per track, plus pitch/tempo, range and
+  loop), `applyMix(mix)` returning `MixApplyResult(applied, pending)`, and `setSolo(id, solo)`.
+  `PlayerMix.toText()` / `fromText()` give a versioned text form for persistence. Settings for
+  tracks not loaded yet are applied when that id is appended.
+- **Lifecycle.** `player.bindTo(owner, LifecycleBinding(...))` pauses in the background (and can
+  resume) and releases on destroy, never on rotation. `player.releaseWith(scope)` releases when a
+  scope (e.g. `viewModelScope`) ends.
+
+### Export
+- **`ExportAudioGraph.build(mix, inputs)`** → `ExportGraph(filterComplex, inputs, outputLabel,
+  applied)`. This is the ffmpeg audio graph that renders a mix the way the player plays it:
+  offsets, balance, boost, solo/mute, range, pitch/tempo and the limiter.
+  `outputDurationMs(sourceMs)` gives the expected length.
+- **`AudioLimits`** publishes the clamp ranges and limiter constants shared by the player and
+  the export graph.
+
+### Waveforms
+- **`AudioEngine.waveformCache`** / **`newWaveformCache(options)`** (`WaveformCache`):
+  - caches by content, in memory and on disk;
+  - shares concurrent analyses;
+  - `get(uri, levels)` returns `AudioResult`; `load(uri, levels)` returns a
+    `WaveformLoad` flow.
+
+### Recording
+- **`Recorder.openDraft(DraftRequest(file, saturation, foreground))`** → `RecordingDraft`:
+  - `record` / `pause` / `resume`, `rerecordFrom(frame)`, `commit(destination)` and `discard`;
+  - one `state` flow (`DraftState`: status, frames, waveforms, input level, `problem`);
+  - each edit is atomic: a failed edit keeps the last good audio;
+  - an existing draft file is reopened.
+- **`MicForeground(notificationId, notification)`** runs the SDK's own microphone foreground
+  service while a draft records, so recording continues with the screen off. The app supplies
+  only the notification.
+
 ## v1.0.1
 
 Same code and API as v1.0.0; only the build changed, so the release can be published.
