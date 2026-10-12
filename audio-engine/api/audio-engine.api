@@ -854,6 +854,94 @@ public final class com/neuralsound/audio/player/VideoSyncStats {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/neuralsound/audio/recorder/DraftProblem : java/lang/Enum {
+	public static final field EMPTY_TAKE Lcom/neuralsound/audio/recorder/DraftProblem;
+	public static final field FOREGROUND_SERVICE_UNAVAILABLE Lcom/neuralsound/audio/recorder/DraftProblem;
+	public static final field INPUT_LOST Lcom/neuralsound/audio/recorder/DraftProblem;
+	public static final field INVALID_TAKE Lcom/neuralsound/audio/recorder/DraftProblem;
+	public static final field MIC_UNAVAILABLE Lcom/neuralsound/audio/recorder/DraftProblem;
+	public static final field OVERFLOW Lcom/neuralsound/audio/recorder/DraftProblem;
+	public static final field PERMISSION_DENIED Lcom/neuralsound/audio/recorder/DraftProblem;
+	public static final field WRITER_FAILURE Lcom/neuralsound/audio/recorder/DraftProblem;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/recorder/DraftProblem;
+	public static fun values ()[Lcom/neuralsound/audio/recorder/DraftProblem;
+}
+
+public final class com/neuralsound/audio/recorder/DraftRequest {
+	public fun <init> (Ljava/io/File;ZLcom/neuralsound/audio/recorder/MicForeground;)V
+	public synthetic fun <init> (Ljava/io/File;ZLcom/neuralsound/audio/recorder/MicForeground;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/io/File;
+	public final fun component2 ()Z
+	public final fun component3 ()Lcom/neuralsound/audio/recorder/MicForeground;
+	public final fun copy (Ljava/io/File;ZLcom/neuralsound/audio/recorder/MicForeground;)Lcom/neuralsound/audio/recorder/DraftRequest;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/DraftRequest;Ljava/io/File;ZLcom/neuralsound/audio/recorder/MicForeground;ILjava/lang/Object;)Lcom/neuralsound/audio/recorder/DraftRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFile ()Ljava/io/File;
+	public final fun getForeground ()Lcom/neuralsound/audio/recorder/MicForeground;
+	public final fun getSaturation ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/DraftState {
+	public fun <init> ()V
+	public fun <init> (Lcom/neuralsound/audio/recorder/DraftStatus;JJLcom/neuralsound/audio/recorder/DraftWaveform;Lcom/neuralsound/audio/recorder/DraftWaveform;FLcom/neuralsound/audio/recorder/DraftProblem;Z)V
+	public synthetic fun <init> (Lcom/neuralsound/audio/recorder/DraftStatus;JJLcom/neuralsound/audio/recorder/DraftWaveform;Lcom/neuralsound/audio/recorder/DraftWaveform;FLcom/neuralsound/audio/recorder/DraftProblem;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/neuralsound/audio/recorder/DraftStatus;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()Lcom/neuralsound/audio/recorder/DraftWaveform;
+	public final fun component5 ()Lcom/neuralsound/audio/recorder/DraftWaveform;
+	public final fun component6 ()F
+	public final fun component7 ()Lcom/neuralsound/audio/recorder/DraftProblem;
+	public final fun component8 ()Z
+	public final fun copy (Lcom/neuralsound/audio/recorder/DraftStatus;JJLcom/neuralsound/audio/recorder/DraftWaveform;Lcom/neuralsound/audio/recorder/DraftWaveform;FLcom/neuralsound/audio/recorder/DraftProblem;Z)Lcom/neuralsound/audio/recorder/DraftState;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/recorder/DraftState;Lcom/neuralsound/audio/recorder/DraftStatus;JJLcom/neuralsound/audio/recorder/DraftWaveform;Lcom/neuralsound/audio/recorder/DraftWaveform;FLcom/neuralsound/audio/recorder/DraftProblem;ZILjava/lang/Object;)Lcom/neuralsound/audio/recorder/DraftState;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCursorFrame ()J
+	public final fun getInputLevel ()F
+	public final fun getLiveWaveform ()Lcom/neuralsound/audio/recorder/DraftWaveform;
+	public final fun getProblem ()Lcom/neuralsound/audio/recorder/DraftProblem;
+	public final fun getRecoverable ()Z
+	public final fun getStatus ()Lcom/neuralsound/audio/recorder/DraftStatus;
+	public final fun getTotalFrames ()J
+	public final fun getWaveform ()Lcom/neuralsound/audio/recorder/DraftWaveform;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/DraftStatus : java/lang/Enum {
+	public static final field COMMITTED Lcom/neuralsound/audio/recorder/DraftStatus;
+	public static final field COMMITTING Lcom/neuralsound/audio/recorder/DraftStatus;
+	public static final field DISCARDED Lcom/neuralsound/audio/recorder/DraftStatus;
+	public static final field EMPTY Lcom/neuralsound/audio/recorder/DraftStatus;
+	public static final field FAILED Lcom/neuralsound/audio/recorder/DraftStatus;
+	public static final field PAUSED Lcom/neuralsound/audio/recorder/DraftStatus;
+	public static final field READY Lcom/neuralsound/audio/recorder/DraftStatus;
+	public static final field RECORDING Lcom/neuralsound/audio/recorder/DraftStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/recorder/DraftStatus;
+	public static fun values ()[Lcom/neuralsound/audio/recorder/DraftStatus;
+}
+
+public final class com/neuralsound/audio/recorder/DraftWaveform {
+	public fun <init> ()V
+	public fun <init> (J[F)V
+	public synthetic fun <init> (J[FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLevels ()[F
+	public final fun getStartFrame ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/recorder/MicForeground {
+	public fun <init> (ILkotlin/jvm/functions/Function1;)V
+	public final fun getNotification ()Lkotlin/jvm/functions/Function1;
+	public final fun getNotificationId ()I
+}
+
 public final class com/neuralsound/audio/recorder/MicMeter {
 	public fun <init> ()V
 	public fun <init> (FFZ)V
@@ -880,6 +968,7 @@ public abstract interface class com/neuralsound/audio/recorder/Recorder {
 	public abstract fun getMeter ()Lkotlinx/coroutines/flow/StateFlow;
 	public abstract fun getState ()Lkotlinx/coroutines/flow/StateFlow;
 	public static fun msForFrames (J)J
+	public abstract fun openDraft (Lcom/neuralsound/audio/recorder/DraftRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun openMic (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun record (Lcom/neuralsound/audio/recorder/TakeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun release (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -975,6 +1064,16 @@ public final class com/neuralsound/audio/recorder/RecorderStatus : java/lang/Enu
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/neuralsound/audio/recorder/RecorderStatus;
 	public static fun values ()[Lcom/neuralsound/audio/recorder/RecorderStatus;
+}
+
+public abstract interface class com/neuralsound/audio/recorder/RecordingDraft {
+	public abstract fun commit (Ljava/io/File;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun discard (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun getState ()Lkotlinx/coroutines/flow/StateFlow;
+	public abstract fun pause (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun record (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun rerecordFrom (JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun resume (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public abstract interface class com/neuralsound/audio/recorder/Take {

@@ -8,12 +8,14 @@ import com.neuralsound.audio.internal.legacy.RecorderError
 import com.neuralsound.audio.internal.legacy.RecorderOperationResult
 import com.neuralsound.audio.internal.legacy.RecordingResult
 import com.neuralsound.audio.internal.legacy.RecorderStatus as LegacyStatus
+import com.neuralsound.audio.recorder.DraftRequest
 import com.neuralsound.audio.recorder.MicMeter
 import com.neuralsound.audio.recorder.Recorder
 import com.neuralsound.audio.recorder.RecorderEvent
 import com.neuralsound.audio.recorder.RecorderHealth
 import com.neuralsound.audio.recorder.RecorderState
 import com.neuralsound.audio.recorder.RecorderStatus
+import com.neuralsound.audio.recorder.RecordingDraft
 import com.neuralsound.audio.recorder.Take
 import com.neuralsound.audio.recorder.TakeMode
 import com.neuralsound.audio.recorder.TakeRequest
@@ -74,6 +76,7 @@ internal class DefaultRecorder(
     private var ticker: Job? = null
     @Volatile private var activeTake: DefaultTake? = null
     private var overflowCount = 0L
+    private val drafts = java.util.concurrent.CopyOnWriteArrayList<DefaultRecordingDraft>()
 
     init {
         scope.launch {
@@ -127,6 +130,22 @@ internal class DefaultRecorder(
         AudioResult.Ok(take)
     }
 
+    override suspend fun openDraft(request: DraftRequest): AudioResult<RecordingDraft> {
+        guard()?.let { return it }
+        val draft = DefaultRecordingDraft(
+            request = request,
+            recorder = this,
+            hasRecordPermission = hasRecordPermission,
+            dispatcher = dispatcher,
+            ioDispatcher = ioDispatcher,
+            onClosed = { drafts.remove(it) },
+        )
+        val opened = draft.initialize()
+        if (!opened.isOk) return AudioResult.Err(opened.errorOrNull()!!)
+        drafts.add(draft)
+        return AudioResult.Ok(draft)
+    }
+
     override suspend fun release() {
         if (!released.compareAndSet(false, true)) return
         operations.withLock {
@@ -135,6 +154,8 @@ internal class DefaultRecorder(
             withContext(ioDispatcher) { session.close() }
             _state.update { it.copy(status = RecorderStatus.RELEASED, health = RecorderHealth()) }
         }
+        // After the recorder finalized any take, so the draft cannot race the native writer.
+        drafts.toList().forEach { it.onRecorderReleased() }
         scope.cancel()
     }
 

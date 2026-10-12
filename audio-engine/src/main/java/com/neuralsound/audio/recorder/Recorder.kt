@@ -24,6 +24,12 @@ interface Recorder {
     /** Starts writing a take. Only one take can be active at a time. */
     suspend fun record(request: TakeRequest): AudioResult<Take>
 
+    /**
+     * Opens a [RecordingDraft] over [DraftRequest.file]: a new empty draft, or an existing
+     * valid draft to continue. Returns `FileError` for a file that is not a valid draft.
+     */
+    suspend fun openDraft(request: DraftRequest): AudioResult<RecordingDraft>
+
     suspend fun release()
 
     companion object {
