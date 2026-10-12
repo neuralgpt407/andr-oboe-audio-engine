@@ -69,8 +69,14 @@ internal class DefaultPlaybackClock(
     fun onPosition(positionMs: Long) = update { r ->
         if (!ready || r.seeking) return@update r
         var next = r
-        if (abs(positionMs - expectedPositionMs(r)) > JUMP_THRESHOLD_MS) {
-            // Loop wrap or an external jump.
+        val expected = expectedPositionMs(r)
+        // A stalled or frozen position (extrapolation runs ahead of it) is not a discontinuity, and
+        // neither is movement that resumes after a stall: only a backward jump (loop wrap) or a
+        // forward jump beyond the expectation counts. While paused or priming the engine's settled
+        // position is adopted silently (seeks bump via beginSeek).
+        val backward = positionMs < r.positionMs && positionMs < expected - JUMP_THRESHOLD_MS
+        val forward = positionMs > expected + JUMP_THRESHOLD_MS
+        if (r.isPlaying && moved && (backward || forward)) {
             next = next.bump()
             moved = r.isPlaying
             anchorPositionMs = positionMs

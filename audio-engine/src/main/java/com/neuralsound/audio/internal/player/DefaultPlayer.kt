@@ -174,19 +174,28 @@ internal class DefaultPlayer(
         if (_state.value.isPlaying) pause() else play()
     }
 
-    override fun seekTo(positionMs: Long) = enqueue { seekNow(positionMs) }
-
-    override fun seekToFraction(fraction: Float) = enqueue {
-        val duration = controller.totalDuration.value
-        if (duration > 0L) seekNow((duration * fraction.coerceIn(0f, 1f)).toLong())
+    override fun seekTo(positionMs: Long) {
+        val shown = showSeekTarget(positionMs)
+        enqueue { seekNow(positionMs, shown) }
     }
 
-    override fun seekBy(deltaMs: Long) = enqueue {
-        seekNow((_state.value.positionMs + deltaMs).coerceAtLeast(0L))
+    override fun seekToFraction(fraction: Float) {
+        val duration = _state.value.durationMs
+        val shown = if (duration > 0L) showSeekTarget((duration * fraction.coerceIn(0f, 1f)).toLong()) else null
+        enqueue {
+            val total = controller.totalDuration.value
+            if (total > 0L) seekNow((total * fraction.coerceIn(0f, 1f)).toLong(), shown)
+        }
     }
 
-    override fun seekAndPlay(positionMs: Long) = enqueue {
-        if (seekNow(positionMs)) playNow()
+    override fun seekBy(deltaMs: Long) {
+        val shown = showSeekTarget((_state.value.positionMs + deltaMs).coerceAtLeast(0L))
+        enqueue { seekNow(shown ?: (_state.value.positionMs + deltaMs).coerceAtLeast(0L), shown) }
+    }
+
+    override fun seekAndPlay(positionMs: Long) {
+        val shown = showSeekTarget(positionMs)
+        enqueue { if (seekNow(positionMs, shown)) playNow() }
     }
 
     override fun setRange(range: PlaybackRange?, loop: Boolean) = enqueue { applyRangeNow(range, loop) }
@@ -519,7 +528,9 @@ internal class DefaultPlayer(
     private fun playNow() {
         if (!controller.isPrepared()) return
         when (val result = controller.play()) {
-            MixerPlaybackResult.Success -> updateLive { it.copy(status = PlayerStatus.PLAYING, error = null) }
+            MixerPlaybackResult.Success -> {
+                updateLive { it.copy(status = PlayerStatus.PLAYING, error = null) }
+            }
             is MixerPlaybackResult.Failure -> if (result.reason == MixerPlaybackFailureReason.NATIVE_START_FAILED) {
                 fail(AudioError.Native("play"))
             }
@@ -530,15 +541,41 @@ internal class DefaultPlayer(
      * Seeks to [positionMs] clamped like the controller does. [PlayerState.positionMs] shows the
      * target at once and the clock reports `seeking` until the controller finishes syncing.
      */
-    private fun seekNow(positionMs: Long): Boolean {
+    private fun seekNow(positionMs: Long, shown: Long? = null): Boolean {
         val requested = positionMs.coerceAtLeast(0L)
         val duration = controller.totalDuration.value
-        if (duration <= 0L) return controller.seekToMs(requested)
-        val target = PlaybackRangePolicy.seekTarget(requested, controller.currentPlaybackRange(), duration)
-        markSeek(target)
+        if (duration <= 0L) {
+            val accepted = controller.seekToMs(requested)
+            if (shown != null && playbackClock.seekTargetMs == shown) playbackClock.settleSeekNow()
+            return accepted
+        }
+        val target = shown
+            ?: PlaybackRangePolicy.seekTarget(requested, controller.currentPlaybackRange(), duration)
+        // A seek requested through the public call is already shown; only mark when nothing is.
+        if (shown == null || playbackClock.seekTargetMs == null) markSeek(target)
         val accepted = controller.seekToMs(target)
-        if (!accepted || !controller.isSyncing.value) playbackClock.settleSeekNow()
+        // Settle only the seek this command owns; a later queued seek keeps its own.
+        if ((!accepted || !controller.isSyncing.value) && playbackClock.seekTargetMs == target) {
+            playbackClock.settleSeekNow()
+        }
         return accepted
+    }
+
+    /**
+     * Caller-thread half of a seek: when loaded, shows the clamped target at once (state position
+     * and the clock's seeking reading). Returns the target, or null to keep the queued behaviour.
+     */
+    private fun showSeekTarget(requestedMs: Long): Long? {
+        if (released.get()) return null
+        val s = _state.value
+        if (s.status !in SNAPSHOT_STATUSES || s.durationMs <= 0L) return null
+        val target = PlaybackRangePolicy.seekTarget(
+            requestedMs.coerceAtLeast(0L),
+            LegacyMapping.toInternal(s.range),
+            s.durationMs,
+        )
+        markSeek(target)
+        return target
     }
 
     /** Shows [target] immediately and starts the clock's seek; the caller settles it if the controller is idle. */
@@ -563,6 +600,8 @@ internal class DefaultPlayer(
             }
         }
         scope.launch {
+            // The controller's flow is the clock's only play-state source: a second (command-path)
+            // source could deliver a stale value after a newer one and flip the state twice.
             controller.isPlaying.collect { playing -> playbackClock.onPlaying(playing) }
         }
         scope.launch {

@@ -140,6 +140,64 @@ class DefaultPlaybackClockTest {
         assertEquals(before + 1, clock.reading.value.discontinuity)
         assertEquals(5L, clock.positionAt(now))
     }
+
+    @Test
+    fun frozenPositionBeforePauseCountsOnlyThePause() = runTest {
+        var now = 0L
+        val clock = DefaultPlaybackClock(backgroundScope, MutableStateFlow(false), { 0L }, nanoTime = { now })
+        clock.onLoadStarted()
+        clock.onLoaded(0L, playing = false, tempo = 1f)
+        clock.onPlaying(true)
+        now = 40_000_000L
+        clock.onPosition(40L)
+        val before = clock.reading.value.discontinuity
+        var t = 80L
+        while (t <= 540L) {
+            now = t * 1_000_000L
+            clock.onPosition(40L)
+            t += 40L
+        }
+        clock.onPlaying(false)
+        assertEquals(before + 1, clock.reading.value.discontinuity)
+    }
+
+    @Test
+    fun stallWhilePlayingThenResumeIsNotADiscontinuity() = runTest {
+        var now = 0L
+        val clock = DefaultPlaybackClock(backgroundScope, MutableStateFlow(false), { 0L }, nanoTime = { now })
+        clock.onLoadStarted()
+        clock.onLoaded(0L, playing = false, tempo = 1f)
+        clock.onPlaying(true)
+        now = 40_000_000L
+        clock.onPosition(40L)
+        val before = clock.reading.value.discontinuity
+        now = 340_000_000L
+        clock.onPosition(40L)
+        now = 380_000_000L
+        clock.onPosition(80L)
+        now = 420_000_000L
+        clock.onPosition(120L)
+        assertEquals(before, clock.reading.value.discontinuity)
+    }
+
+    @Test
+    fun pausedPositionSnapIsNotADiscontinuity() = runTest {
+        var now = 0L
+        val clock = DefaultPlaybackClock(backgroundScope, MutableStateFlow(false), { 0L }, nanoTime = { now })
+        clock.onLoadStarted()
+        clock.onLoaded(0L, playing = false, tempo = 1f)
+        clock.onPlaying(true)
+        now = 40_000_000L
+        clock.onPosition(40L)
+        val before = clock.reading.value.discontinuity
+        now = 80_000_000L
+        clock.onPlaying(false)
+        // The engine reports its settled paused position far from the last reading.
+        now = 100_000_000L
+        clock.onPosition(480L)
+        assertEquals(before + 1, clock.reading.value.discontinuity)
+        assertEquals(480L, clock.reading.value.positionMs)
+    }
 }
 
 /** Seek, discontinuity and clamping behaviour through [DefaultPlayer] with a fake controller. */

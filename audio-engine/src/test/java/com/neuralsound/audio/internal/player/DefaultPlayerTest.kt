@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -157,6 +158,48 @@ class DefaultPlayerTest {
         player.togglePlayPause()
         advanceUntilIdle()
         assertEquals(PlayerStatus.PAUSED, player.state.value.status)
+        player.release()
+    }
+
+    @Test
+    fun seekShowsTheTargetBeforeTheQueueRuns() = runTest {
+        val controller = FakeMixerController().apply { holdSyncOnSeek = true }
+        val player = player(controller)
+        player.load(PlayerSource(tracks = listOf(original)))
+        advanceUntilIdle()
+        val before = player.clock.reading.value.discontinuity
+
+        player.seekTo(5_000L)
+
+        assertEquals(5_000L, player.state.value.positionMs)
+        val shown = player.clock.reading.value
+        assertTrue(shown.seeking)
+        assertEquals(5_000L, shown.seekTargetMs)
+        assertEquals(before + 1, shown.discontinuity)
+
+        // runCurrent, not advanceUntilIdle: skipping virtual time would hit the clock's seek timeout.
+        runCurrent()
+        assertTrue(controller.calls.contains("seek:5000"))
+        assertTrue(player.clock.reading.value.seeking)
+        controller.finishSeek()
+        advanceUntilIdle()
+        assertFalse(player.clock.reading.value.seeking)
+        assertEquals(before + 1, player.clock.reading.value.discontinuity)
+        player.release()
+    }
+
+    @Test
+    fun backToBackSeekByAccumulatesSynchronously() = runTest {
+        val controller = FakeMixerController().apply { holdSyncOnSeek = true }
+        val player = player(controller)
+        player.load(PlayerSource(tracks = listOf(original)))
+        advanceUntilIdle()
+
+        player.seekBy(1_000L)
+        player.seekBy(1_000L)
+
+        assertEquals(2_000L, player.state.value.positionMs)
+        assertEquals(2_000L, player.clock.reading.value.seekTargetMs)
         player.release()
     }
 
