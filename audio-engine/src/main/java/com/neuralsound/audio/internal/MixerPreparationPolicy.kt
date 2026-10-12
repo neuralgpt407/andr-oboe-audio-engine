@@ -1,6 +1,7 @@
 package com.neuralsound.audio.internal
 
 import com.neuralsound.audio.internal.legacy.AudioFailure
+import com.neuralsound.audio.TrackFailureReason
 import com.neuralsound.audio.TrackId
 
 internal sealed interface MixerPreparationResult {
@@ -17,12 +18,14 @@ internal sealed interface MixerAppendResult {
     data class Failure(val failure: AudioFailure) : MixerAppendResult
 }
 
-internal enum class NativeMixerFailureCode(val value: Int) {
-    NONE(0),
-    SOURCE_UNAVAILABLE(1),
-    INVALID_FORMAT(2),
-    DECODER_FAILURE(3),
-    RESAMPLER_FAILURE(4),
+internal enum class NativeMixerFailureCode(val value: Int, val reason: TrackFailureReason?) {
+    NONE(0, null),
+    SOURCE_UNAVAILABLE(1, TrackFailureReason.UNREADABLE_SOURCE),
+    INVALID_FORMAT(2, TrackFailureReason.CORRUPT_MEDIA),
+    DECODER_FAILURE(3, TrackFailureReason.DECODE_FAILURE),
+    RESAMPLER_FAILURE(4, TrackFailureReason.DECODE_FAILURE),
+    NO_AUDIO_TRACK(5, TrackFailureReason.NO_AUDIO_TRACK),
+    UNSUPPORTED_CODEC(6, TrackFailureReason.UNSUPPORTED_CODEC),
 }
 
 internal data class NativeMixerFailureSnapshot(
@@ -44,52 +47,21 @@ internal data class NativeMixerFailureSnapshot(
 
 internal data class MixerTrackFailureContext(
     val id: TrackId,
-    val uriString: String,
     val format: DecodedAudioFormat,
 )
 
 internal object MixerNativeFailurePolicy {
+    /** Maps a native failure snapshot to a typed per-track failure without any media URI. */
     fun toPublicFailure(
         failure: NativeMixerFailureSnapshot,
         tracks: List<MixerTrackFailureContext>,
         fallbackOperation: String = "prepare",
     ): AudioFailure {
         val track = tracks.getOrNull(failure.trackIndex)
-            ?: return AudioFailure.NativeOperationFailed(
-                operation = fallbackOperation,
-                detail = "Native mixer failed without a track context",
-            )
-        return when (NativeMixerFailureCode.entries.firstOrNull { it.value == failure.code }) {
-            NativeMixerFailureCode.SOURCE_UNAVAILABLE -> AudioFailure.SourceUnavailable(
-                track.uriString
-            )
-
-            NativeMixerFailureCode.INVALID_FORMAT -> {
-                AudioFailure.UnsupportedTrackFormat(
-                    trackId = track.id,
-                    sampleRate = track.format.sampleRate,
-                    channelCount = track.format.channelCount,
-                    requiredSampleRate = MixerTrackFormatPolicy.CANONICAL_SAMPLE_RATE,
-                )
-            }
-
-            NativeMixerFailureCode.DECODER_FAILURE -> AudioFailure.NativeOperationFailed(
-                operation = "decodeTrack",
-                detail = "Track ${track.id} could not be decoded",
-            )
-
-            NativeMixerFailureCode.RESAMPLER_FAILURE -> AudioFailure.NativeOperationFailed(
-                operation = "normalizeTrack",
-                detail = "Track ${track.id} could not be normalized to " +
-                    "${MixerTrackFormatPolicy.CANONICAL_SAMPLE_RATE} Hz",
-            )
-
-            NativeMixerFailureCode.NONE,
-            null -> AudioFailure.NativeOperationFailed(
-                operation = fallbackOperation,
-                detail = "Native mixer initialization failed",
-            )
-        }
+            ?: return AudioFailure.NativeOperationFailed(operation = fallbackOperation)
+        val reason = NativeMixerFailureCode.entries.firstOrNull { it.value == failure.code }?.reason
+            ?: return AudioFailure.NativeOperationFailed(operation = fallbackOperation)
+        return AudioFailure.TrackFailed(track.id, reason)
     }
 }
 

@@ -72,7 +72,7 @@ bool NativeAudioDecoder::initialize(int fd) {
     if (selectedFormat == nullptr || mime.empty()) {
         __android_log_print(ANDROID_LOG_ERROR, kTag, "No audio track found");
         release();
-        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
+        failureKind_ = NativeAudioDecoderFailure::NoAudioTrack;
         return false;
     }
 
@@ -104,7 +104,7 @@ bool NativeAudioDecoder::initialize(int fd) {
     if (codec_ == nullptr) {
         AMediaFormat_delete(selectedFormat);
         release();
-        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
+        failureKind_ = NativeAudioDecoderFailure::UnsupportedCodec;
         return false;
     }
 
@@ -113,7 +113,7 @@ bool NativeAudioDecoder::initialize(int fd) {
     if (status != AMEDIA_OK) {
         logMediaStatus("configure", status);
         release();
-        failureKind_ = NativeAudioDecoderFailure::DecoderFailure;
+        failureKind_ = NativeAudioDecoderFailure::UnsupportedCodec;
         return false;
     }
 

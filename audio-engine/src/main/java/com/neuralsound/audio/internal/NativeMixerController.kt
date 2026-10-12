@@ -21,6 +21,7 @@ import com.neuralsound.audio.internal.legacy.MixerTrackState as PublicMixerTrack
 import com.neuralsound.audio.internal.legacy.PlaybackEffects
 import com.neuralsound.audio.internal.legacy.PlaybackRange
 import com.neuralsound.audio.internal.legacy.TrackMix
+import com.neuralsound.audio.TrackFailureReason
 import com.neuralsound.audio.TrackId
 import com.neuralsound.audio.player.PitchTempo
 import com.neuralsound.audio.player.PlayerOptions
@@ -299,15 +300,16 @@ internal class NativeMixerController(
                     val pfd = try {
                         context.contentResolver.openFileDescriptor(uri, "r")
                             ?: throw MixerPreparationException(
-                                failure = AudioFailure.SourceUnavailable(uri.toString()),
-                                message = "Unable to open $uri",
+                                failure = AudioFailure.TrackFailed(type, TrackFailureReason.UNREADABLE_SOURCE),
+                                message = "Unable to open track $type",
                             )
                     } catch (exception: MixerPreparationException) {
                         throw exception
                     } catch (exception: Exception) {
+                        // The platform message can contain the media path; never propagate it.
                         throw MixerPreparationException(
-                            failure = AudioFailure.SourceUnavailable(uri.toString()),
-                            message = exception.message ?: "Unable to open $uri",
+                            failure = AudioFailure.TrackFailed(type, TrackFailureReason.UNREADABLE_SOURCE),
+                            message = "Unable to open track $type (${exception.javaClass.simpleName})",
                         )
                     }
                     openedFds += pfd
@@ -330,19 +332,13 @@ internal class NativeMixerController(
                 }
                 MixerTrackFormatPolicy.findProblem(trackFormats)?.let { problem ->
                     throw MixerPreparationException(
-                        failure = AudioFailure.UnsupportedTrackFormat(
-                            trackId = problem.trackId,
-                            sampleRate = problem.format.sampleRate,
-                            channelCount = problem.format.channelCount,
-                            requiredSampleRate = problem.requiredSampleRate,
-                        ),
+                        failure = AudioFailure.TrackFailed(problem.trackId, TrackFailureReason.UNSUPPORTED_CODEC),
                         message = "Track ${problem.trackId} is missing valid audio format metadata",
                     )
                 }
                 val failureTracks = trackFormats.map { (trackId, format) ->
                     MixerTrackFailureContext(
                         id = trackId,
-                        uriString = tracks.getValue(trackId).toString(),
                         format = format,
                     )
                 }
@@ -477,21 +473,21 @@ internal class NativeMixerController(
             AppendTrackDecision.APPEND -> Unit
             AppendTrackDecision.ALREADY_APPENDED -> return MixerAppendResult.Success
             AppendTrackDecision.CONFLICTING_TRACK -> {
-                Log.w(tag, "Rejecting duplicate appended track type=$type uri=$uri")
+                Log.w(tag, "Rejecting duplicate appended track type=$type bound to another source")
                 return MixerAppendResult.Failure(
                     AudioFailure.NativeOperationFailed(
                         operation = "appendTrack",
-                        detail = "Track ID $type is already bound to another URI",
+                        detail = "Track ID $type is already bound to another source",
                     )
                 )
             }
         }
         val pfd = try {
             context.contentResolver.openFileDescriptor(uri, "r")
-                ?: return MixerAppendResult.Failure(AudioFailure.SourceUnavailable(uri.toString()))
+                ?: return MixerAppendResult.Failure(AudioFailure.TrackFailed(type, TrackFailureReason.UNREADABLE_SOURCE))
         } catch (e: Exception) {
-            Log.e(tag, "Unable to open appended track uri=$uri", e)
-            return MixerAppendResult.Failure(AudioFailure.SourceUnavailable(uri.toString()))
+            Log.e(tag, "Unable to open appended track $type (${e.javaClass.simpleName})")
+            return MixerAppendResult.Failure(AudioFailure.TrackFailed(type, TrackFailureReason.UNREADABLE_SOURCE))
         }
 
         return pfd.use {
@@ -503,12 +499,7 @@ internal class NativeMixerController(
             )
             MixerTrackFormatPolicy.findProblem(listOf(type to format))?.let { problem ->
                 return@use MixerAppendResult.Failure(
-                    AudioFailure.UnsupportedTrackFormat(
-                        trackId = type,
-                        sampleRate = format.sampleRate,
-                        channelCount = format.channelCount,
-                        requiredSampleRate = problem.requiredSampleRate,
-                    )
+                    AudioFailure.TrackFailed(type, TrackFailureReason.UNSUPPORTED_CODEC)
                 )
             }
             val appended = engine.use(false) { handle ->
@@ -551,7 +542,6 @@ internal class NativeMixerController(
                         failure = nativeFailure,
                         tracks = failureContexts() + MixerTrackFailureContext(
                             id = type,
-                            uriString = uri.toString(),
                             format = format,
                         ),
                         fallbackOperation = "appendTrack",
@@ -864,7 +854,6 @@ internal class NativeMixerController(
             val format = decodedTrackFormats[trackId] ?: return@mapNotNull null
             MixerTrackFailureContext(
                 id = trackId,
-                uriString = state.uri.toString(),
                 format = format,
             )
         }

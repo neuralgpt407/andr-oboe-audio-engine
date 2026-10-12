@@ -1,31 +1,26 @@
 package com.neuralsound.audio.internal
 
-import com.neuralsound.audio.internal.legacy.AudioFailure
+import com.neuralsound.audio.TrackFailureReason
 import com.neuralsound.audio.TrackId
+import com.neuralsound.audio.internal.legacy.AudioFailure
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
+/** FR-17 / S3-AS3: native failures name the failing track and a reason, never its URI. */
 class MixerNativeFailurePolicyTest {
     private val original = TrackId("original")
+    private val vocal = TrackId("vocal")
     private val tracks = listOf(
-        MixerTrackFailureContext(
-            id = original,
-            uriString = "file:///original.wav",
-            format = DecodedAudioFormat(48_000, 6),
-        )
+        MixerTrackFailureContext(id = original, format = DecodedAudioFormat(48_000, 6)),
+        MixerTrackFailureContext(id = vocal, format = DecodedAudioFormat(44_100, 1)),
     )
 
     @Test
     fun packedNativeFailureKeepsCodeAndTrackIndexTogether() {
-        val encoded =
-            (NativeMixerFailureCode.RESAMPLER_FAILURE.value.toLong() shl Int.SIZE_BITS) or
-                7L
+        val encoded = (NativeMixerFailureCode.RESAMPLER_FAILURE.value.toLong() shl Int.SIZE_BITS) or 7L
 
         assertEquals(
-            NativeMixerFailureSnapshot(
-                code = NativeMixerFailureCode.RESAMPLER_FAILURE.value,
-                trackIndex = 7,
-            ),
+            NativeMixerFailureSnapshot(code = NativeMixerFailureCode.RESAMPLER_FAILURE.value, trackIndex = 7),
             NativeMixerFailureSnapshot.decode(encoded),
         )
         assertEquals(
@@ -35,61 +30,39 @@ class MixerNativeFailurePolicyTest {
     }
 
     @Test
-    fun nativeSourceAndFormatFailuresRemainTypedAtThePublicBoundary() {
+    fun everyNativeKindMapsToATypedReasonForTheFailingTrack() {
+        val expected = mapOf(
+            NativeMixerFailureCode.SOURCE_UNAVAILABLE to TrackFailureReason.UNREADABLE_SOURCE,
+            NativeMixerFailureCode.INVALID_FORMAT to TrackFailureReason.CORRUPT_MEDIA,
+            NativeMixerFailureCode.DECODER_FAILURE to TrackFailureReason.DECODE_FAILURE,
+            NativeMixerFailureCode.RESAMPLER_FAILURE to TrackFailureReason.DECODE_FAILURE,
+            NativeMixerFailureCode.NO_AUDIO_TRACK to TrackFailureReason.NO_AUDIO_TRACK,
+            NativeMixerFailureCode.UNSUPPORTED_CODEC to TrackFailureReason.UNSUPPORTED_CODEC,
+        )
+        expected.forEach { (code, reason) ->
+            assertEquals(
+                code.name,
+                AudioFailure.TrackFailed(vocal, reason),
+                MixerNativeFailurePolicy.toPublicFailure(NativeMixerFailureSnapshot(code.value, 1), tracks),
+            )
+        }
+    }
+
+    @Test
+    fun failuresWithoutATrackOrKindStayNativeOperationFailures() {
         assertEquals(
-            AudioFailure.SourceUnavailable("file:///original.wav"),
-            MixerNativeFailurePolicy.toPublicFailure(
-                failure = NativeMixerFailureSnapshot(
-                    NativeMixerFailureCode.SOURCE_UNAVAILABLE.value,
-                    0,
-                ),
-                tracks = tracks,
-            ),
+            AudioFailure.NativeOperationFailed("prepare"),
+            MixerNativeFailurePolicy.toPublicFailure(NativeMixerFailureSnapshot(NativeMixerFailureCode.DECODER_FAILURE.value, 9), tracks),
         )
         assertEquals(
-            AudioFailure.UnsupportedTrackFormat(
-                trackId = original,
-                sampleRate = 48_000,
-                channelCount = 6,
-                requiredSampleRate = 44_100,
-            ),
-            MixerNativeFailurePolicy.toPublicFailure(
-                failure = NativeMixerFailureSnapshot(
-                    NativeMixerFailureCode.INVALID_FORMAT.value,
-                    0,
-                ),
-                tracks = tracks,
-            ),
+            AudioFailure.NativeOperationFailed("appendTrack"),
+            MixerNativeFailurePolicy.toPublicFailure(NativeMixerFailureSnapshot(0, 0), tracks, "appendTrack"),
         )
     }
 
     @Test
-    fun nativeDecoderAndResamplerFailuresUseDistinctPublicOperations() {
-        assertEquals(
-            AudioFailure.NativeOperationFailed(
-                operation = "decodeTrack",
-                detail = "Track original could not be decoded",
-            ),
-            MixerNativeFailurePolicy.toPublicFailure(
-                failure = NativeMixerFailureSnapshot(
-                    NativeMixerFailureCode.DECODER_FAILURE.value,
-                    0,
-                ),
-                tracks = tracks,
-            ),
-        )
-        assertEquals(
-            AudioFailure.NativeOperationFailed(
-                operation = "normalizeTrack",
-                detail = "Track original could not be normalized to 44100 Hz",
-            ),
-            MixerNativeFailurePolicy.toPublicFailure(
-                failure = NativeMixerFailureSnapshot(
-                    NativeMixerFailureCode.RESAMPLER_FAILURE.value,
-                    0,
-                ),
-                tracks = tracks,
-            ),
-        )
+    fun nativeCodesMatchTheDecoderEnum() {
+        // engine/NativeAudioDecoder.h NativeAudioDecoderFailure values.
+        assertEquals(listOf(0, 1, 2, 3, 4, 5, 6), NativeMixerFailureCode.entries.map { it.value })
     }
 }

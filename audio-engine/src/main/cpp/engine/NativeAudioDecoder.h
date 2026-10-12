@@ -15,6 +15,8 @@ enum class NativeAudioDecoderFailure : int32_t {
     InvalidFormat = 2,
     DecoderFailure = 3,
     ResamplerFailure = 4,
+    NoAudioTrack = 5,
+    UnsupportedCodec = 6,
 };
 
 struct NativeAudioFailureSnapshot {

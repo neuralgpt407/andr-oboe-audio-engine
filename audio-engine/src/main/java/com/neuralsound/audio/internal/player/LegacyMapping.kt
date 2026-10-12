@@ -40,6 +40,7 @@ internal object LegacyMapping {
         is AudioFailure.SourceUnavailable -> trackIdForUri(failure.uri)
             ?.let { AudioError.TrackFailed(it, TrackFailureReason.UNREADABLE_SOURCE) }
             ?: AudioError.Native("openTrack")
+        is AudioFailure.TrackFailed -> AudioError.TrackFailed(failure.trackId, failure.reason)
         is AudioFailure.UnsupportedTrackFormat ->
             AudioError.TrackFailed(failure.trackId, TrackFailureReason.UNSUPPORTED_CODEC)
         is AudioFailure.NativeOperationFailed -> AudioError.Native(failure.operation)

@@ -1,5 +1,6 @@
 package com.neuralsound.audio.internal.legacy
 
+import com.neuralsound.audio.TrackFailureReason
 import com.neuralsound.audio.TrackId
 
 internal sealed interface AudioResult {
@@ -19,5 +20,7 @@ internal sealed interface AudioFailure {
         val channelCount: Int?,
         val requiredSampleRate: Int?,
     ) : AudioFailure
+    /** A specific track failed; carries the caller's id and a reason, never the media URI. */
+    data class TrackFailed(val trackId: TrackId, val reason: TrackFailureReason) : AudioFailure
     data class NativeOperationFailed(val operation: String, val detail: String? = null) : AudioFailure
 }
