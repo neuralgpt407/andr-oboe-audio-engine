@@ -38,8 +38,9 @@ source-compatible with v0.2.0, which no app shipped on.
 - **Focus.** `FocusPolicy` (Duck, PauseAndResume, Ignore). Ducking uses the native
   attenuation ramp.
 - **Completion.** A natural-completion event, and `PlayerStatus.ENDED`.
-- **Video.** Muted video sync with a dead-band/hysteresis policy and
-  attach/suspend/detach while audio plays.
+- **Video.** Muted video sync with a 75 ms dead-band, a proportional speed nudge below
+  450 ms and hysteretic hard seeks above it; attach/suspend/detach while audio plays. The
+  video player runs video-only, so seeks no longer wait for a muted audio track.
 - **Robustness.** The oboe#2325 orphan-drain workaround on stream close. Finer decoder
   failure kinds (`NoAudioTrack`, `UnsupportedCodec`).
 

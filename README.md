@@ -121,8 +121,10 @@ val waveform = engine.waveforms.analyze(parcelFileDescriptor).getOrNull()
   stream. `PlayerState.route.kind` tells recording UIs whether monitoring-grade output (wired
   or USB) is connected.
 - **Video.** `PlayerState.video.player` is a Media3 `Player` to put in a `PlayerView`. The
-  video follows play/pause/tempo and is drift-corrected (75 ms dead-band, hard correction
-  above 450 ms). Use `video.suspendPresentation()` / `attachPresentation()` /
+  video follows play/pause/tempo and is drift-corrected: nothing within 75 ms, a small speed
+  nudge (at most ±10 %) up to 450 ms, and a seek above that. On re-attach the frame appears
+  within 450 ms when keyframes are at most 2 s apart; files with sparse keyframes (e.g.
+  WhatsApp videos) take up to the time needed to decode from the previous keyframe. Use `video.suspendPresentation()` / `attachPresentation()` /
   `detachPresentation()` while audio keeps playing, and rebind views when
   `VideoState.revision` changes.
 - **Diagnostics.** `player.diagnostics()` reports audio-callback and render-thread load and
