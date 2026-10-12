@@ -13,7 +13,11 @@ import com.neuralsound.audio.internal.waveform.DefaultWaveformAnalyzer
 import com.neuralsound.audio.player.Player
 import com.neuralsound.audio.player.PlayerOptions
 import com.neuralsound.audio.recorder.Recorder
+import com.neuralsound.audio.internal.waveform.DefaultWaveformCache
 import com.neuralsound.audio.waveform.WaveformAnalyzer
+import com.neuralsound.audio.waveform.WaveformCache
+import com.neuralsound.audio.waveform.WaveformCacheOptions
+import java.io.File
 
 /**
  * Entry point of the SDK. Create one per process (for example in your DI graph) and ask it
@@ -51,6 +55,17 @@ class AudioEngine private constructor(context: Context) {
 
     /** Offline file waveform analysis. */
     val waveforms: WaveformAnalyzer by lazy { DefaultWaveformAnalyzer() }
+
+    /** Process-wide waveform cache with default options. */
+    val waveformCache: WaveformCache by lazy { newWaveformCache(WaveformCacheOptions()) }
+
+    /** Creates a waveform cache with its own memory limit; caches share the on-disk directory. */
+    fun newWaveformCache(options: WaveformCacheOptions): WaveformCache = DefaultWaveformCache(
+        cacheDir = File(applicationContext.cacheDir, "neuralsound-waveforms"),
+        contentResolver = applicationContext.contentResolver,
+        options = options,
+        analyzer = waveforms,
+    )
 
     companion object {
         @JvmStatic

@@ -2,11 +2,13 @@ public final class com/neuralsound/audio/AudioEngine {
 	public static final field Companion Lcom/neuralsound/audio/AudioEngine$Companion;
 	public synthetic fun <init> (Landroid/content/Context;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public static final fun create (Landroid/content/Context;)Lcom/neuralsound/audio/AudioEngine;
+	public final fun getWaveformCache ()Lcom/neuralsound/audio/waveform/WaveformCache;
 	public final fun getWaveforms ()Lcom/neuralsound/audio/waveform/WaveformAnalyzer;
 	public final fun isAvailable ()Z
 	public final fun newPlayer (Lcom/neuralsound/audio/player/PlayerOptions;)Lcom/neuralsound/audio/player/Player;
 	public static synthetic fun newPlayer$default (Lcom/neuralsound/audio/AudioEngine;Lcom/neuralsound/audio/player/PlayerOptions;ILjava/lang/Object;)Lcom/neuralsound/audio/player/Player;
 	public final fun newRecorder ()Lcom/neuralsound/audio/recorder/Recorder;
+	public final fun newWaveformCache (Lcom/neuralsound/audio/waveform/WaveformCacheOptions;)Lcom/neuralsound/audio/waveform/WaveformCache;
 }
 
 public final class com/neuralsound/audio/AudioEngine$Companion {
@@ -1063,5 +1065,63 @@ public final class com/neuralsound/audio/waveform/WaveformAnalyzer$Companion {
 
 public final class com/neuralsound/audio/waveform/WaveformAnalyzer$DefaultImpls {
 	public static synthetic fun analyze$default (Lcom/neuralsound/audio/waveform/WaveformAnalyzer;Landroid/os/ParcelFileDescriptor;ILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public abstract interface class com/neuralsound/audio/waveform/WaveformCache {
+	public abstract fun clear (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun get (Landroid/net/Uri;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun load (Landroid/net/Uri;I)Lkotlinx/coroutines/flow/Flow;
+}
+
+public final class com/neuralsound/audio/waveform/WaveformCache$DefaultImpls {
+	public static synthetic fun get$default (Lcom/neuralsound/audio/waveform/WaveformCache;Landroid/net/Uri;ILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun load$default (Lcom/neuralsound/audio/waveform/WaveformCache;Landroid/net/Uri;IILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+}
+
+public final class com/neuralsound/audio/waveform/WaveformCacheOptions {
+	public fun <init> ()V
+	public fun <init> (JI)V
+	public synthetic fun <init> (JIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()I
+	public final fun copy (JI)Lcom/neuralsound/audio/waveform/WaveformCacheOptions;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/waveform/WaveformCacheOptions;JIILjava/lang/Object;)Lcom/neuralsound/audio/waveform/WaveformCacheOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxDiskBytes ()J
+	public final fun getMemoryEntries ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/neuralsound/audio/waveform/WaveformLoad {
+}
+
+public final class com/neuralsound/audio/waveform/WaveformLoad$Failed : com/neuralsound/audio/waveform/WaveformLoad {
+	public fun <init> (Lcom/neuralsound/audio/AudioError;)V
+	public final fun component1 ()Lcom/neuralsound/audio/AudioError;
+	public final fun copy (Lcom/neuralsound/audio/AudioError;)Lcom/neuralsound/audio/waveform/WaveformLoad$Failed;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/waveform/WaveformLoad$Failed;Lcom/neuralsound/audio/AudioError;ILjava/lang/Object;)Lcom/neuralsound/audio/waveform/WaveformLoad$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Lcom/neuralsound/audio/AudioError;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/waveform/WaveformLoad$Loading : com/neuralsound/audio/waveform/WaveformLoad {
+	public static final field INSTANCE Lcom/neuralsound/audio/waveform/WaveformLoad$Loading;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/waveform/WaveformLoad$Ready : com/neuralsound/audio/waveform/WaveformLoad {
+	public fun <init> (Lcom/neuralsound/audio/waveform/Waveform;)V
+	public final fun component1 ()Lcom/neuralsound/audio/waveform/Waveform;
+	public final fun copy (Lcom/neuralsound/audio/waveform/Waveform;)Lcom/neuralsound/audio/waveform/WaveformLoad$Ready;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/waveform/WaveformLoad$Ready;Lcom/neuralsound/audio/waveform/Waveform;ILjava/lang/Object;)Lcom/neuralsound/audio/waveform/WaveformLoad$Ready;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getWaveform ()Lcom/neuralsound/audio/waveform/Waveform;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
