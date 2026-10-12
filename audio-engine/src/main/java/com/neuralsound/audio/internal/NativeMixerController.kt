@@ -23,6 +23,8 @@ import com.neuralsound.audio.internal.legacy.PlaybackRange
 import com.neuralsound.audio.internal.legacy.TrackMix
 import com.neuralsound.audio.TrackFailureReason
 import com.neuralsound.audio.TrackId
+import com.neuralsound.audio.player.FocusPolicy
+import com.neuralsound.audio.player.FocusState
 import com.neuralsound.audio.player.PitchTempo
 import com.neuralsound.audio.player.PlayerOptions
 import com.neuralsound.audio.player.TrackSettings
@@ -55,6 +57,8 @@ private class MixerPreparationException(
 internal class NativeMixerController(
     context: Context,
     private val maxTracks: Int = PlayerOptions.DEFAULT_MAX_TRACKS,
+    focusPolicy: FocusPolicy = FocusPolicy.Duck(),
+    private val pauseOnNoisy: Boolean = true,
 ) : MixerController {
     private val context = context.applicationContext
     private val tag = "OboeNativeMixerController"
@@ -62,9 +66,20 @@ internal class NativeMixerController(
     private val mainHandler = Handler(Looper.getMainLooper())
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    // Audio focus state
-    @Volatile private var pausedByFocus = false
-    @Volatile private var isDucked = false
+    // Audio focus (FEAT-0001 FR-18): policy decisions live in AudioFocusHandler.
+    private val _focusChanges = MutableSharedFlow<FocusState>(extraBufferCapacity = 8)
+    override val focusChanges: Flow<FocusState> = _focusChanges.asSharedFlow()
+    private val focusHandler = AudioFocusHandler(
+        policy = focusPolicy,
+        actions = object : AudioFocusHandler.Actions {
+            override fun isPrepared() = isInitialized.get()
+            override fun isPlaying() = _isPlaying.value
+            override fun pauseForFocus() { pausePlayback(fromFocusLoss = true) }
+            override fun resumeAfterFocus() { play() }
+            override fun setAttenuation(level: Float) = setOutputAttenuation(level)
+            override fun publish(state: FocusState) { _focusChanges.tryEmit(state) }
+        },
+    )
     private val focusRequest: AudioFocusRequestCompat by lazy {
         AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
             .setAudioAttributes(
@@ -733,14 +748,10 @@ internal class NativeMixerController(
 
     private fun pausePlayback(fromFocusLoss: Boolean = false): MixerPlaybackResult {
         val result = playbackCommands.pause()
-        if (fromFocusLoss) {
-            // Keep the focus request held — abandoning it means AUDIOFOCUS_GAIN
-            // is never delivered when the call ends, so auto-resume would be
-            // impossible. Keep the noisy receiver too: unplugging headphones
-            // during the call must cancel auto-resume (no speaker blast).
-            pausedByFocus = true
-        } else {
-            pausedByFocus = false
+        if (!fromFocusLoss) {
+            // A focus-caused pause keeps the focus request (so GAIN can auto-resume) and the
+            // noisy receiver (unplugging during a call must cancel auto-resume).
+            focusHandler.onUserCommand()
             unregisterNoisyReceiver()
             abandonAudioFocus()
         }
@@ -932,8 +943,7 @@ internal class NativeMixerController(
             unregisterNoisyReceiver()
             unregisterDeviceCallback()
             abandonAudioFocus()
-            pausedByFocus = false
-            isDucked = false
+            focusHandler.reset()
             if (resetPlaybackState) {
                 playbackCommands.clearPlaybackIntent()
                 resetStates()
@@ -964,69 +974,18 @@ internal class NativeMixerController(
     // -------------------------------------------------------------------------
 
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                if (isDucked) {
-                    isDucked = false
-                    restoreDuckVolume()
-                }
-                // Auto-resume only when the pause was caused by focus loss
-                // (call/assistant). A user pause never sets pausedByFocus.
-                if (pausedByFocus) {
-                    pausedByFocus = false
-                    if (isInitialized.get() && !_isPlaying.value) play()
-                }
-            }
-            AudioManager.AUDIOFOCUS_LOSS,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                // Permanent loss (another music app) or transient loss (phone
-                // call, Google Assistant). Un-duck first so the stored volumes
-                // are correct when playback resumes. A permanent loss never
-                // gets a GAIN afterwards, so auto-resume simply never fires.
-                if (isDucked) {
-                    isDucked = false
-                    restoreDuckVolume()
-                }
-                if (isInitialized.get() && _isPlaying.value) {
-                    pausePlayback(fromFocusLoss = true)
-                }
-            }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // Notification, brief system sound — just duck volume.
-                if (!isDucked) {
-                    isDucked = true
-                    applyDuckVolume()
-                }
-            }
-        }
+        focusHandler.onFocusChange(focusChange)
     }
 
     private fun requestAudioFocus() {
-        pausedByFocus = false
+        focusHandler.onUserCommand()
+        if (!focusHandler.requestsFocus) return
         AudioManagerCompat.requestAudioFocus(audioManager, focusRequest)
     }
 
     private fun abandonAudioFocus() {
+        if (!focusHandler.requestsFocus) return
         AudioManagerCompat.abandonAudioFocusRequest(audioManager, focusRequest)
-    }
-
-    private fun applyDuckVolume() {
-        engine.use { handle ->
-            synchronized(this) { trackTypeOrder.toList() }.forEachIndexed { index, type ->
-                val savedVolume = synchronized(this) { trackStates[type] }?.volume?.value ?: return@forEachIndexed
-                nativeSetVolume(handle, index, savedVolume * DUCK_FACTOR)
-            }
-        }
-    }
-
-    private fun restoreDuckVolume() {
-        engine.use { handle ->
-            synchronized(this) { trackTypeOrder.toList() }.forEachIndexed { index, type ->
-                val state = synchronized(this) { trackStates[type] } ?: return@forEachIndexed
-                nativeSetVolume(handle, index, state.volume.value)
-                nativeSetMute(handle, index, state.isMuted.value)
-            }
-        }
     }
 
     // -------------------------------------------------------------------------
@@ -1034,7 +993,7 @@ internal class NativeMixerController(
     // -------------------------------------------------------------------------
 
     private fun registerNoisyReceiver() {
-        if (noisyReceiverRegistered) return
+        if (noisyReceiverRegistered || !pauseOnNoisy) return
         val filter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
         ContextCompat.registerReceiver(
             context,
@@ -1160,8 +1119,6 @@ internal class NativeMixerController(
         private const val TEMPO_NO_OP_EPSILON = 0.0001f
         private const val TEMPO_NATIVE_APPLY_THRESHOLD = 0.01f
         private const val ROUTE_MONITOR_INTERVAL_MS = 250L
-        /** Volume multiplier applied during AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK (notifications). */
-        private const val DUCK_FACTOR = 0.2f
 
         internal val nativeLibraryAvailable: Boolean
 

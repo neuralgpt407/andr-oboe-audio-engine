@@ -26,6 +26,8 @@ class AudioEngine private constructor(context: Context) {
         controller = NativeMixerController(
             applicationContext,
             maxTracks = options.maxTracks.coerceIn(1, PlayerOptions.MAX_SUPPORTED_TRACKS),
+            focusPolicy = options.focus,
+            pauseOnNoisy = options.pauseOnNoisy,
         ),
         options = options,
         nativeAvailable = isAvailable,

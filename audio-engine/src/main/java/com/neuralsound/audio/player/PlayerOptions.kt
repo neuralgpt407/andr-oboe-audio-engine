@@ -17,12 +17,17 @@ data class PlayerOptions(
     }
 }
 
-/** What the player does when another app takes audio focus. Permanent focus loss always pauses. */
+/**
+ * What the player does when another app takes audio focus. With both [Duck] and
+ * [PauseAndResume], a transient loss (call, assistant) pauses and resumes automatically when
+ * focus returns, unless the user paused or played in between, and a permanent loss always
+ * pauses with no auto-resume.
+ */
 sealed interface FocusPolicy {
-    /** Lower the output to [level] (0..1) while another app plays briefly. */
+    /** On a may-duck loss (notification, navigation prompt), ramp the output down to [level] (0..1). */
     data class Duck(val level: Float = 0.2f) : FocusPolicy
 
-    /** Pause on transient loss and resume automatically when focus returns. */
+    /** On a may-duck loss, pause like any transient loss (e.g. spoken content). */
     data object PauseAndResume : FocusPolicy
 
     /** Do not request audio focus (e.g. a short preview inside a recording screen). */

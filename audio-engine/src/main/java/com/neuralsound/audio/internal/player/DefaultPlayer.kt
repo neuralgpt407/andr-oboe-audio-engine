@@ -346,6 +346,9 @@ internal class DefaultPlayer(
             controller.runtimeFailure.collect { failure -> if (failure != null) fail(toPublic(failure)) }
         }
         scope.launch {
+            controller.focusChanges.collect { _events.tryEmit(PlayerEvent.FocusChanged(it)) }
+        }
+        scope.launch {
             controller.completions.collect { completion ->
                 var ended = false
                 updateLive {

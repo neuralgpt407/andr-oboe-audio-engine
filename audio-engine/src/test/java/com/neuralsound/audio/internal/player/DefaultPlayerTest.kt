@@ -17,6 +17,7 @@ import com.neuralsound.audio.internal.legacy.PlaybackEffects
 import com.neuralsound.audio.internal.legacy.PlaybackRange as InternalPlaybackRange
 import com.neuralsound.audio.internal.legacy.TrackMix
 import com.neuralsound.audio.player.ChannelGain
+import com.neuralsound.audio.player.FocusState
 import com.neuralsound.audio.player.PitchTempo
 import com.neuralsound.audio.player.PlaybackRange
 import com.neuralsound.audio.player.PlayerEvent
@@ -227,6 +228,23 @@ class DefaultPlayerTest {
     }
 
     @Test
+    fun focusChangesAreForwardedAsEvents() = runTest {
+        val controller = FakeMixerController()
+        val player = player(controller)
+        val events = mutableListOf<PlayerEvent>()
+        val collector = launch { player.events.toList(events) }
+        advanceUntilIdle()
+
+        controller.focusChanges.tryEmit(FocusState.DUCKED)
+        controller.focusChanges.tryEmit(FocusState.GAINED)
+        advanceUntilIdle()
+
+        assertEquals(listOf(PlayerEvent.FocusChanged(FocusState.DUCKED), PlayerEvent.FocusChanged(FocusState.GAINED)), events)
+        collector.cancel()
+        player.release()
+    }
+
+    @Test
     fun loadFailureNamesTheTrackWithoutItsUri() = runTest {
         val controller = FakeMixerController(
             prepareResult = MixerPreparationResult.Failure(
@@ -351,6 +369,7 @@ class DefaultPlayerTest {
         override val pitchSemitones = MutableStateFlow(0)
         override val runtimeFailure = MutableStateFlow<AudioFailure?>(null)
         override val completions = MutableSharedFlow<MixerCompletion>(extraBufferCapacity = 8)
+        override val focusChanges = MutableSharedFlow<FocusState>(extraBufferCapacity = 8)
 
         /** Mirrors the native controller: playback stops at the end and completion is signalled. */
         fun finishAt(positionMs: Long, completion: MixerCompletion) {

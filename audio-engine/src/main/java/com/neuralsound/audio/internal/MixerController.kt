@@ -7,6 +7,7 @@ import com.neuralsound.audio.internal.legacy.MixerTrackState
 import com.neuralsound.audio.internal.legacy.PlaybackEffects
 import com.neuralsound.audio.internal.legacy.PlaybackRange
 import com.neuralsound.audio.TrackId
+import com.neuralsound.audio.player.FocusState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -22,6 +23,9 @@ internal interface MixerController {
     val tempoSpeed: StateFlow<Float>
     val pitchSemitones: StateFlow<Int>
     val runtimeFailure: StateFlow<AudioFailure?>
+
+    /** Audio-focus transitions handled by the session's focus policy. */
+    val focusChanges: Flow<FocusState>
 
     /** Emits once each time playback reaches its natural end without looping. */
     val completions: Flow<MixerCompletion>
