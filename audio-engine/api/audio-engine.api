@@ -132,6 +132,23 @@ public final class com/neuralsound/audio/AudioError$WriterOverflow : com/neurals
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/neuralsound/audio/AudioLimits {
+	public static final field INSTANCE Lcom/neuralsound/audio/AudioLimits;
+	public static final field LIMITER_ATTACK_MS I
+	public static final field LIMITER_CEILING F
+	public static final field LIMITER_RELEASE_MS I
+	public static final field MAX_BOOST_DB I
+	public static final field MAX_OFFSET_MS J
+	public static final field MAX_PITCH_SEMITONES I
+	public static final field MAX_TEMPO F
+	public static final field MAX_TRACKS I
+	public static final field MAX_WAVEFORM_LEVELS I
+	public static final field MIN_BOOST_DB I
+	public static final field MIN_OFFSET_MS J
+	public static final field MIN_PITCH_SEMITONES I
+	public static final field MIN_TEMPO F
+}
+
 public abstract interface class com/neuralsound/audio/AudioResult {
 	public static final field Companion Lcom/neuralsound/audio/AudioResult$Companion;
 	public static final field Done Lcom/neuralsound/audio/AudioResult;
@@ -207,6 +224,30 @@ public final class com/neuralsound/audio/TrackId {
 	public fun toString ()Ljava/lang/String;
 	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
 	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/export/ExportAudioGraph {
+	public static final field INSTANCE Lcom/neuralsound/audio/export/ExportAudioGraph;
+	public final fun build (Lcom/neuralsound/audio/player/PlayerMix;Ljava/util/List;Ljava/lang/String;)Lcom/neuralsound/audio/export/ExportGraph;
+	public static synthetic fun build$default (Lcom/neuralsound/audio/export/ExportAudioGraph;Lcom/neuralsound/audio/player/PlayerMix;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lcom/neuralsound/audio/export/ExportGraph;
+}
+
+public final class com/neuralsound/audio/export/ExportGraph {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lcom/neuralsound/audio/player/PlayerMix;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Lcom/neuralsound/audio/player/PlayerMix;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lcom/neuralsound/audio/player/PlayerMix;)Lcom/neuralsound/audio/export/ExportGraph;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/export/ExportGraph;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Lcom/neuralsound/audio/player/PlayerMix;ILjava/lang/Object;)Lcom/neuralsound/audio/export/ExportGraph;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getApplied ()Lcom/neuralsound/audio/player/PlayerMix;
+	public final fun getFilterComplex ()Ljava/lang/String;
+	public final fun getInputs ()Ljava/util/List;
+	public final fun getOutputLabel ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun outputDurationMs (J)J
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/neuralsound/audio/player/AudioRoute {
