@@ -1,6 +1,7 @@
 package com.neuralsound.audio.internal.video
 
 import android.content.Context
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 
@@ -9,8 +10,17 @@ internal fun interface ExoPlayerFactory {
 }
 
 internal object ExoPlayerFactories {
+    /**
+     * Video-only player: the audio track is not selected, so Media3 runs on its standalone
+     * clock. With a (muted) audio renderer its clock waits for an AudioTrack to be rebuilt
+     * after every seek, which left the video hundreds of milliseconds behind each correction.
+     */
     private val productionFactory = ExoPlayerFactory { context ->
-        ExoPlayer.Builder(context).build()
+        ExoPlayer.Builder(context).build().apply {
+            trackSelectionParameters = trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                .build()
+        }
     }
 
     @Volatile

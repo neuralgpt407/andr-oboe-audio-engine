@@ -116,6 +116,27 @@ class PlayerVideoTest {
     }
 
     @Test
+    fun moderateDriftNudgesVideoSpeedOnTopOfTempoUntilItSettles() = runTest {
+        val video = video()
+        video.setSource(uri)
+        runCurrent()
+        audio.value = audio.value.copy(status = PlayerStatus.PLAYING, positionMs = 10_000, pitchTempo = PitchTempo(tempo = 1.5f))
+        runCurrent()
+        fake.seekPositions.clear()
+        fake.currentPosition = 9_700
+        step(600) // past the tempo grace window
+
+        step(100)
+        assertEquals("300 ms behind: +10 % (capped) on top of 1.5x", 1.65f, fake.playbackParameters.speed, 1e-4f)
+        assertTrue("a moderate drift never seeks", fake.seekPositions.isEmpty())
+
+        fake.currentPosition = 9_990
+        step(100)
+        assertEquals(1.5f, fake.playbackParameters.speed, 1e-4f)
+        video.release()
+    }
+
+    @Test
     fun audioSeekMovesVideoImmediately() = runTest {
         val video = video()
         video.setSource(uri)

@@ -62,8 +62,56 @@ class VideoSyncPolicyTest {
         val exited = policy.decide(sample(audioMs = 1_250L, videoMs = 1_000L, nowMs = 250L))
         val nextSpike = policy.decide(sample(audioMs = 1_500L, videoMs = 1_000L, nowMs = 500L))
 
-        assertEquals(VideoSyncSuppressionReason.BELOW_HARD_THRESHOLD, exited.suppressionReason)
+        assertEquals(VideoSyncAction.SoftCorrect(1.1f), exited.action)
         assertEquals(VideoSyncSuppressionReason.CONFIRMATION, nextSpike.suppressionReason)
+    }
+
+    @Test
+    fun `drift between the deadband and the hard threshold nudges speed proportionally and capped`() {
+        val policy = VideoSyncPolicy(config)
+
+        val small = policy.decide(sample(audioMs = 1_080L, videoMs = 1_000L))
+        val ahead = VideoSyncPolicy(config).decide(sample(audioMs = 1_000L, videoMs = 1_090L))
+        val large = VideoSyncPolicy(config).decide(sample(audioMs = 1_400L, videoMs = 1_000L))
+
+        assertSoft(1.08f, small.action)
+        assertSoft(0.91f, ahead.action)
+        assertSoft(1.1f, large.action)
+    }
+
+    @Test
+    fun `soft correction continues inside the deadband and ends once drift settles`() {
+        val policy = VideoSyncPolicy(config)
+        policy.decide(sample(audioMs = 1_300L, videoMs = 1_000L))
+
+        val stillCorrecting = policy.decide(sample(audioMs = 1_050L, videoMs = 1_000L))
+        val settled = policy.decide(sample(audioMs = 1_020L, videoMs = 1_000L))
+        val idle = policy.decide(sample(audioMs = 1_050L, videoMs = 1_000L))
+
+        assertSoft(1.05f, stillCorrecting.action)
+        assertEquals(VideoSyncAction.SoftCorrect(1f), settled.action)
+        assertEquals(VideoSyncSuppressionReason.DEADBAND, idle.suppressionReason)
+    }
+
+    @Test
+    fun `hard seek and reset both end a soft correction`() {
+        val seeking = VideoSyncPolicy(config.copy(confirmationSamples = 1))
+        seeking.decide(sample(audioMs = 1_300L, videoMs = 1_000L))
+        seeking.decide(sample(audioMs = 1_500L, videoMs = 1_000L))
+        val afterSeek = seeking.decide(sample(audioMs = 1_050L, videoMs = 1_000L, nowMs = 5_000L))
+
+        val resetting = VideoSyncPolicy(config)
+        resetting.decide(sample(audioMs = 1_300L, videoMs = 1_000L))
+        resetting.reset(elapsedRealtimeMs = 0L)
+        val afterReset = resetting.decide(sample(audioMs = 1_050L, videoMs = 1_000L))
+
+        assertEquals(VideoSyncSuppressionReason.DEADBAND, afterSeek.suppressionReason)
+        assertEquals(VideoSyncSuppressionReason.DEADBAND, afterReset.suppressionReason)
+    }
+
+    private fun assertSoft(expected: Float, action: VideoSyncAction) {
+        assertTrue("expected a soft correction, got $action", action is VideoSyncAction.SoftCorrect)
+        assertEquals(expected, (action as VideoSyncAction.SoftCorrect).speedFactor, 1e-4f)
     }
 
     @Test

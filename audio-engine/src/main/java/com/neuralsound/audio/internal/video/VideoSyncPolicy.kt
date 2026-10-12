@@ -6,8 +6,14 @@ import kotlin.math.abs
  * Pure, stateful correction policy for the muted video renderer.
  *
  * Drift is always `audioPositionMs - videoPositionMs`: a positive value means that video is
- * behind the authoritative native-audio clock. The first production policy intentionally uses
- * hard correction only. Soft speed correction remains an evidence-gated experiment.
+ * behind the authoritative native-audio clock.
+ *
+ * - Within the dead-band nothing happens.
+ * - Between the dead-band and the hard threshold the video speed is nudged proportionally
+ *   (at most ±[VideoSyncPolicyConfig.maxSoftCorrection]) until drift settles within
+ *   [VideoSyncPolicyConfig.softSettleMs]. A seek always lands a little behind (the decoder
+ *   needs time), and on real media that residual stayed constant below the hard threshold.
+ * - Above the hard threshold (with hysteresis, confirmation and cooldown) the video seeks.
  */
 internal class VideoSyncPolicy(
     private val config: VideoSyncPolicyConfig = VideoSyncPolicyConfig(),
@@ -16,6 +22,7 @@ internal class VideoSyncPolicy(
     private var qualifyingSamples = 0
     private var cooldownUntilMs = NO_DEADLINE
     private var graceUntilMs = NO_DEADLINE
+    private var softActive = false
 
     @Synchronized
     fun decide(sample: VideoSyncSample): VideoSyncDecision {
@@ -41,18 +48,23 @@ internal class VideoSyncPolicy(
 
         if (absoluteDriftMs <= config.deadbandMs) {
             clearConfirmation()
-            return suppressed(driftMs, VideoSyncSuppressionReason.DEADBAND)
+            if (!softActive) return suppressed(driftMs, VideoSyncSuppressionReason.DEADBAND)
+            if (absoluteDriftMs <= config.softSettleMs) {
+                softActive = false
+                return VideoSyncDecision(driftMs, VideoSyncAction.SoftCorrect(1f))
+            }
+            return softCorrection(driftMs)
         }
 
         if (hardBandEntered) {
             if (absoluteDriftMs <= config.hardCorrectionExitMs) {
                 clearConfirmation()
-                return suppressed(driftMs, VideoSyncSuppressionReason.BELOW_HARD_THRESHOLD)
+                return softCorrection(driftMs)
             }
         } else {
             if (absoluteDriftMs < config.hardCorrectionEnterMs) {
                 qualifyingSamples = 0
-                return suppressed(driftMs, VideoSyncSuppressionReason.BELOW_HARD_THRESHOLD)
+                return softCorrection(driftMs)
             }
             hardBandEntered = true
         }
@@ -65,6 +77,7 @@ internal class VideoSyncPolicy(
         val targetPositionMs = audioPositionMs.coerceIn(0L, sample.durationMs)
         cooldownUntilMs = deadlineAfter(sample.elapsedRealtimeMs, config.hardCorrectionCooldownMs)
         clearConfirmation()
+        softActive = false
         return VideoSyncDecision(
             driftMs = driftMs,
             action = VideoSyncAction.HardSeek(targetPositionMs),
@@ -75,12 +88,21 @@ internal class VideoSyncPolicy(
     @Synchronized
     fun reset(elapsedRealtimeMs: Long, tempoGraceMs: Long = 0L) {
         clearConfirmation()
+        softActive = false
         cooldownUntilMs = NO_DEADLINE
         graceUntilMs = if (tempoGraceMs > 0L) {
             deadlineAfter(elapsedRealtimeMs, tempoGraceMs)
         } else {
             NO_DEADLINE
         }
+    }
+
+    /** Speed factor for the video: above 1 catches up when it is behind, below 1 lets audio catch up. */
+    private fun softCorrection(driftMs: Long): VideoSyncDecision {
+        softActive = true
+        val factor = 1f + (driftMs.toFloat() / config.softHorizonMs)
+            .coerceIn(-config.maxSoftCorrection, config.maxSoftCorrection)
+        return VideoSyncDecision(driftMs, VideoSyncAction.SoftCorrect(factor))
     }
 
     private fun clearConfirmation() {
@@ -114,6 +136,12 @@ internal data class VideoSyncPolicyConfig(
     val hardCorrectionExitMs: Long = 250L,
     val confirmationSamples: Int = 2,
     val hardCorrectionCooldownMs: Long = 2_500L,
+    /** Drift that a soft correction removes per second at full proportion (gain = 1 / horizon). */
+    val softHorizonMs: Long = 1_000L,
+    /** Largest speed change used by soft correction, as a fraction of the tempo. */
+    val maxSoftCorrection: Float = 0.1f,
+    /** A soft correction ends once drift is within this many milliseconds. */
+    val softSettleMs: Long = 20L,
 ) {
     init {
         require(deadbandMs >= 0L)
@@ -121,6 +149,9 @@ internal data class VideoSyncPolicyConfig(
         require(hardCorrectionEnterMs > hardCorrectionExitMs)
         require(confirmationSamples >= 1)
         require(hardCorrectionCooldownMs >= 0L)
+        require(softHorizonMs > 0L)
+        require(maxSoftCorrection in 0f..0.5f)
+        require(softSettleMs in 0L..deadbandMs)
     }
 }
 
@@ -142,6 +173,9 @@ internal data class VideoSyncDecision(
 internal sealed interface VideoSyncAction {
     data object NoAction : VideoSyncAction
     data class HardSeek(val targetPositionMs: Long) : VideoSyncAction
+
+    /** Multiply the tempo by [speedFactor] for the video; 1 ends the correction. */
+    data class SoftCorrect(val speedFactor: Float) : VideoSyncAction
 }
 
 internal enum class VideoSyncSuppressionReason {

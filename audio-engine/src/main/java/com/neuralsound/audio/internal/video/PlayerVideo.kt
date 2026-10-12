@@ -42,7 +42,8 @@ internal object NoVideoPort : VideoPort {
  * Muted Media3 video slaved to the native audio clock (FEAT-0001 FR-26).
  *
  * The video follows play/pause and tempo from [audio]; drift is corrected by [VideoSyncPolicy]
- * (75 ms dead-band, hard seek above 450 ms, released below 250 ms). Suspending stops decoding
+ * (75 ms dead-band, a small speed nudge below the hard threshold, hard seek above 450 ms,
+ * released below 250 ms). Suspending stops decoding
  * while audio continues; re-attaching seeks to the audio position before frames are shown.
  * All Media3 calls run on [mainDispatcher].
  */
@@ -71,6 +72,8 @@ internal class PlayerVideo(
     private var suspended = false
     private var hardCorrections = 0L
     private var lastAudioPositionMs = 0L
+    private var tempo = 1f
+    private var softFactor = 1f
     private var generation = 0L
 
     override suspend fun setSource(uri: Uri?) = withContext(mainDispatcher) {
@@ -113,7 +116,7 @@ internal class PlayerVideo(
         suspended = false
         // Show the frame at the authoritative audio position before resuming.
         current.seekTo(audio.value.positionMs)
-        policy.reset(clock())
+        resetSync(current)
         startFollowing(current)
     }
 
@@ -158,18 +161,31 @@ internal class PlayerVideo(
 
     private fun follow(target: Player, state: PlayerState) {
         if (target.playWhenReady != state.isPlaying) target.playWhenReady = state.isPlaying
-        val tempo = state.pitchTempo.tempo
-        if (target.playbackParameters.speed != tempo) {
-            target.playbackParameters = PlaybackParameters(tempo, 1f)
-            policy.reset(clock(), tempoGraceMs = TEMPO_GRACE_MS)
+        if (state.pitchTempo.tempo != tempo) {
+            tempo = state.pitchTempo.tempo
+            resetSync(target, tempoGraceMs = TEMPO_GRACE_MS)
+        } else {
+            applySpeed(target)
         }
         val jump = abs(state.positionMs - lastAudioPositionMs) > DISCONTINUITY_MS
         lastAudioPositionMs = state.positionMs
         // Seeks and scrubbing while paused move the video immediately; steady drift is the policy's job.
         if (jump || (!state.isPlaying && abs(state.positionMs - target.currentPosition) > POLICY_DEADBAND_MS)) {
             target.seekTo(state.positionMs)
-            policy.reset(clock())
+            resetSync(target)
         }
+    }
+
+    /** Drops any soft correction and restarts the policy (after seeks, attach and tempo changes). */
+    private fun resetSync(target: Player, tempoGraceMs: Long = 0L) {
+        softFactor = 1f
+        applySpeed(target)
+        policy.reset(clock(), tempoGraceMs)
+    }
+
+    private fun applySpeed(target: Player) {
+        val speed = tempo * softFactor
+        if (target.playbackParameters.speed != speed) target.playbackParameters = PlaybackParameters(speed, 1f)
     }
 
     private fun ineligibility(): VideoSyncSkipReason? {
@@ -193,10 +209,18 @@ internal class PlayerVideo(
                 elapsedRealtimeMs = clock(),
             ),
         )
-        val action = decision.action
-        if (action is VideoSyncAction.HardSeek) {
-            current.seekTo(action.targetPositionMs)
-            hardCorrections += 1
+        when (val action = decision.action) {
+            is VideoSyncAction.HardSeek -> {
+                softFactor = 1f
+                applySpeed(current)
+                current.seekTo(action.targetPositionMs)
+                hardCorrections += 1
+            }
+            is VideoSyncAction.SoftCorrect -> {
+                softFactor = action.speedFactor
+                applySpeed(current)
+            }
+            VideoSyncAction.NoAction -> Unit
         }
         publish { it.copy(sync = it.sync.copy(lastDriftMs = decision.driftMs, hardCorrections = hardCorrections)) }
     }
