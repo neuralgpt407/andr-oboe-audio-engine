@@ -17,8 +17,8 @@ Signalsmith Stretch.
 
 | Artifact | Purpose |
 | --- | --- |
-| `com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:<tag>` | Player (with built-in video), recorder, waveform analysis |
-| `com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:<tag>:native-symbols@zip` | Unstripped native symbols for Play Console / Crashlytics |
+| `com.github.neuralgpt407:andr-oboe-audio-engine:<tag>` | Player (with built-in video), recorder, waveform analysis |
+| `com.github.neuralgpt407:andr-oboe-audio-engine:<tag>:native-symbols@zip` | Unstripped native symbols for Play Console / Crashlytics |
 
 The Android baseline is min SDK 24, compile SDK 36, NDK 29, CMake 3.22.1, Java 11 and
 Kotlin 2.0. The published ABIs are `arm64-v8a` and `armeabi-v7a`. The native library is
@@ -36,7 +36,7 @@ dependencyResolutionManagement {
 
 // build.gradle.kts
 dependencies {
-    implementation("com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:v1.0.1")
+    implementation("com.github.neuralgpt407:andr-oboe-audio-engine:v1.0.1")
 }
 ```
 
@@ -185,7 +185,7 @@ val nativeDebugSymbols by configurations.creating {
 }
 
 dependencies {
-    add(nativeDebugSymbols.name, "com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:v1.0.1:native-symbols@zip")
+    add(nativeDebugSymbols.name, "com.github.neuralgpt407:andr-oboe-audio-engine:v1.0.1:native-symbols@zip")
 }
 ```
 

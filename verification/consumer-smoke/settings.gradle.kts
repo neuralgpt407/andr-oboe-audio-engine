@@ -22,7 +22,7 @@ dependencyResolutionManagement {
             name = "qualifiedCandidate"
             url = uri(localRepository)
             content {
-                includeGroup("com.github.neuralgpt407.andr-oboe-audio-engine")
+                includeModule("com.github.neuralgpt407", "andr-oboe-audio-engine")
             }
         }
         google()

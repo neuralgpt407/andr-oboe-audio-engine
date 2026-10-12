@@ -29,7 +29,7 @@ android {
 }
 
 dependencies {
-    implementation("com.github.neuralgpt407.andr-oboe-audio-engine:audio-engine:$engineVersion")
+    implementation("com.github.neuralgpt407:andr-oboe-audio-engine:$engineVersion")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.13")

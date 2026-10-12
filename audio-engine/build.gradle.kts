@@ -125,7 +125,9 @@ afterEvaluate {
     publishing {
         publications {
             create<MavenPublication>("release") {
-                artifactId = "audio-engine"
+                // JitPack publishes a single-module repository as com.github.<user>:<repo>:<tag>;
+                // local publications use the same coordinates so qualification matches it.
+                artifactId = "andr-oboe-audio-engine"
                 from(components["release"])
                 artifact(nativeSymbols)
                 pom {

@@ -8,6 +8,9 @@ Same code and API as v1.0.0; only the build changed, so the release can be publi
   resolve the public-API check plugin (binary-compatibility-validator, served from Maven
   Central only). JitPack builds (`JITPACK=true`) now leave that plugin out; `apiCheck` still
   runs in local builds and release qualification. Use `v1.0.1`; `v1.0.0` cannot be resolved.
+- **Coordinates.** JitPack publishes this single-module repository as
+  `com.github.neuralgpt407:andr-oboe-audio-engine:<tag>` (and
+  `…:<tag>:native-symbols@zip`). Local publications now use the same coordinates.
 
 ## v1.0.0 — not published (JitPack build failed; see v1.0.1)
 

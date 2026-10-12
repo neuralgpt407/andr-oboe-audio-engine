@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-readonly GROUP="com.github.neuralgpt407.andr-oboe-audio-engine"
-readonly GROUP_PATH="com/github/neuralgpt407/andr-oboe-audio-engine"
-readonly ARTIFACT="audio-engine"
+readonly GROUP="com.github.neuralgpt407"
+readonly GROUP_PATH="com/github/neuralgpt407"
+readonly ARTIFACT="andr-oboe-audio-engine"
 readonly NDK_VERSION="29.0.14206865"
 
 fail() {
