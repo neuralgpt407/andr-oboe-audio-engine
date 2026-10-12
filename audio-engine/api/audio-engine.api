@@ -350,6 +350,19 @@ public final class com/neuralsound/audio/player/FocusState : java/lang/Enum {
 	public static fun values ()[Lcom/neuralsound/audio/player/FocusState;
 }
 
+public final class com/neuralsound/audio/player/MixApplyResult {
+	public fun <init> (Ljava/util/Set;Ljava/util/Set;)V
+	public final fun component1 ()Ljava/util/Set;
+	public final fun component2 ()Ljava/util/Set;
+	public final fun copy (Ljava/util/Set;Ljava/util/Set;)Lcom/neuralsound/audio/player/MixApplyResult;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/MixApplyResult;Ljava/util/Set;Ljava/util/Set;ILjava/lang/Object;)Lcom/neuralsound/audio/player/MixApplyResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getApplied ()Ljava/util/Set;
+	public final fun getPending ()Ljava/util/Set;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/neuralsound/audio/player/PitchTempo {
 	public static final field Companion Lcom/neuralsound/audio/player/PitchTempo$Companion;
 	public static final field MAX_SEMITONES I
@@ -483,6 +496,33 @@ public final class com/neuralsound/audio/player/PlayerEvent$TrackFailed : com/ne
 	public final fun getTrackId-k1C3Psg ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerMix {
+	public static final field Companion Lcom/neuralsound/audio/player/PlayerMix$Companion;
+	public static final field FORMAT_VERSION I
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;Lcom/neuralsound/audio/player/PitchTempo;Lcom/neuralsound/audio/player/PlaybackRange;Z)V
+	public synthetic fun <init> (Ljava/util/Map;Lcom/neuralsound/audio/player/PitchTempo;Lcom/neuralsound/audio/player/PlaybackRange;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/Map;
+	public final fun component2 ()Lcom/neuralsound/audio/player/PitchTempo;
+	public final fun component3 ()Lcom/neuralsound/audio/player/PlaybackRange;
+	public final fun component4 ()Z
+	public final fun copy (Ljava/util/Map;Lcom/neuralsound/audio/player/PitchTempo;Lcom/neuralsound/audio/player/PlaybackRange;Z)Lcom/neuralsound/audio/player/PlayerMix;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/PlayerMix;Ljava/util/Map;Lcom/neuralsound/audio/player/PitchTempo;Lcom/neuralsound/audio/player/PlaybackRange;ZILjava/lang/Object;)Lcom/neuralsound/audio/player/PlayerMix;
+	public fun equals (Ljava/lang/Object;)Z
+	public static final fun fromText (Ljava/lang/String;)Lcom/neuralsound/audio/AudioResult;
+	public final fun getLoop ()Z
+	public final fun getPitchTempo ()Lcom/neuralsound/audio/player/PitchTempo;
+	public final fun getRange ()Lcom/neuralsound/audio/player/PlaybackRange;
+	public final fun getTracks ()Ljava/util/Map;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+	public final fun toText ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/PlayerMix$Companion {
+	public final fun fromText (Ljava/lang/String;)Lcom/neuralsound/audio/AudioResult;
 }
 
 public final class com/neuralsound/audio/player/PlayerOptions {
@@ -621,6 +661,39 @@ public final class com/neuralsound/audio/player/Track {
 	public final fun getUri ()Landroid/net/Uri;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/neuralsound/audio/player/TrackMix {
+	public static final field Companion Lcom/neuralsound/audio/player/TrackMix$Companion;
+	public fun <init> ()V
+	public fun <init> (FZZLcom/neuralsound/audio/player/ChannelGain;JI)V
+	public synthetic fun <init> (FZZLcom/neuralsound/audio/player/ChannelGain;JIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()Z
+	public final fun component3 ()Z
+	public final fun component4 ()Lcom/neuralsound/audio/player/ChannelGain;
+	public final fun component5 ()J
+	public final fun component6 ()I
+	public final fun copy (FZZLcom/neuralsound/audio/player/ChannelGain;JI)Lcom/neuralsound/audio/player/TrackMix;
+	public static synthetic fun copy$default (Lcom/neuralsound/audio/player/TrackMix;FZZLcom/neuralsound/audio/player/ChannelGain;JIILjava/lang/Object;)Lcom/neuralsound/audio/player/TrackMix;
+	public fun equals (Ljava/lang/Object;)Z
+	public static final fun from (Lcom/neuralsound/audio/player/TrackSettings;)Lcom/neuralsound/audio/player/TrackMix;
+	public static final fun from (Lcom/neuralsound/audio/player/TrackSettings;Z)Lcom/neuralsound/audio/player/TrackMix;
+	public final fun getBalance ()Lcom/neuralsound/audio/player/ChannelGain;
+	public final fun getBoostDb ()I
+	public final fun getMuted ()Z
+	public final fun getOffsetMs ()J
+	public final fun getSolo ()Z
+	public final fun getVolume ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+	public final fun toTrackSettings ()Lcom/neuralsound/audio/player/TrackSettings;
+}
+
+public final class com/neuralsound/audio/player/TrackMix$Companion {
+	public final fun from (Lcom/neuralsound/audio/player/TrackSettings;)Lcom/neuralsound/audio/player/TrackMix;
+	public final fun from (Lcom/neuralsound/audio/player/TrackSettings;Z)Lcom/neuralsound/audio/player/TrackMix;
+	public static synthetic fun from$default (Lcom/neuralsound/audio/player/TrackMix$Companion;Lcom/neuralsound/audio/player/TrackSettings;ZILjava/lang/Object;)Lcom/neuralsound/audio/player/TrackMix;
 }
 
 public final class com/neuralsound/audio/player/TrackSettings {
