@@ -5,6 +5,7 @@ import com.neuralsound.audio.AudioResult
 import com.neuralsound.audio.recorder.DraftProblem
 import com.neuralsound.audio.recorder.DraftRequest
 import com.neuralsound.audio.recorder.DraftStatus
+import com.neuralsound.audio.recorder.MicForeground
 import com.neuralsound.audio.recorder.MicMeter
 import com.neuralsound.audio.recorder.Recorder
 import com.neuralsound.audio.recorder.RecorderEvent
@@ -125,6 +126,20 @@ class DefaultRecordingDraftTest {
         }
     }
 
+    private class FakeForeground(var accept: Boolean = true, val log: MutableList<String> = mutableListOf()) :
+        MicForegroundControl {
+        override suspend fun promote(foreground: MicForeground): Boolean {
+            log += "promote"
+            return accept
+        }
+
+        override suspend fun stop() {
+            log += "stop"
+        }
+    }
+
+    private val mic = MicForeground(7) { error("not built in draft tests") }
+
     private companion object {
         fun readSamples(file: File): ShortArray {
             val bytes = file.readBytes()
@@ -139,14 +154,17 @@ class DefaultRecordingDraftTest {
         permission: Boolean = true,
         promoter: (File, File) -> Unit = { from, to -> AtomicFilePromoter.promote(from, to) },
         file: File = draftFile,
+        request: DraftRequest = DraftRequest(file),
+        foregroundControl: MicForegroundControl? = null,
     ): Pair<FakeRecorder, DefaultRecordingDraft> {
         val dispatcher = StandardTestDispatcher(testScheduler)
         return recorder to DefaultRecordingDraft(
-            request = DraftRequest(file),
+            request = request,
             recorder = recorder,
             hasRecordPermission = { permission },
             dispatcher = dispatcher,
             promoter = promoter,
+            foregroundControl = foregroundControl,
         )
     }
 
@@ -704,5 +722,84 @@ class DefaultRecordingDraftTest {
 
         assertEquals(1_000L, (result as AudioResult.Ok).value.frames)
         assertTrue(draftFile.isFile)
+    }
+
+    @Test
+    fun promotesBeforeTheFirstTakeAndStaysUpAcrossPause() = runTest {
+        val fg = FakeForeground()
+        val recorder = FakeRecorder()
+        val (_, draft) = open(recorder, request = DraftRequest(draftFile, foreground = mic), foregroundControl = fg)
+        draft.opened()
+
+        assertTrue(draft.record().isOk)
+        assertEquals(listOf("promote"), fg.log)
+        assertNotNull(recorder.active)
+        recorder.nextFrames = 1_000
+        assertTrue(draft.pause().isOk)
+        assertTrue(draft.resume().isOk)
+        assertEquals(listOf("promote"), fg.log)
+    }
+
+    @Test
+    fun refusedPromotionStartsNoTake() = runTest {
+        val fg = FakeForeground(accept = false)
+        val recorder = FakeRecorder()
+        val (_, draft) = open(recorder, request = DraftRequest(draftFile, foreground = mic), foregroundControl = fg)
+        draft.opened()
+
+        assertEquals(AudioResult.Err(AudioError.InvalidState), draft.record())
+
+        assertNull(recorder.active)
+        assertEquals(DraftProblem.FOREGROUND_SERVICE_UNAVAILABLE, draft.state.value.problem)
+        assertTrue(draft.state.value.recoverable)
+        assertEquals(DraftStatus.EMPTY, draft.state.value.status)
+        assertFalse(workFile.exists())
+    }
+
+    @Test
+    fun serviceStopsOnCommit() = runTest {
+        val fg = FakeForeground()
+        val (recorder, draft) = open(request = DraftRequest(draftFile, foreground = mic), foregroundControl = fg)
+        draft.opened()
+        recordAndPause(recorder, draft, 1_000)
+
+        assertTrue(draft.commit(File(dir, "out.wav")).isOk)
+
+        assertEquals(listOf("promote", "stop"), fg.log)
+    }
+
+    @Test
+    fun serviceStopsOnDiscard() = runTest {
+        val fg = FakeForeground()
+        val (recorder, draft) = open(request = DraftRequest(draftFile, foreground = mic), foregroundControl = fg)
+        draft.opened()
+        assertTrue(draft.record().isOk)
+
+        draft.discard()
+
+        assertEquals(listOf("promote", "stop"), fg.log)
+    }
+
+    @Test
+    fun serviceStopsWhenTheRecorderIsReleased() = runTest {
+        val fg = FakeForeground()
+        val (_, draft) = open(request = DraftRequest(draftFile, foreground = mic), foregroundControl = fg)
+        draft.opened()
+        assertTrue(draft.record().isOk)
+
+        draft.onRecorderReleased()
+
+        assertEquals(listOf("promote", "stop"), fg.log)
+    }
+
+    @Test
+    fun foregroundIsNotUsedWithoutTheOptIn() = runTest {
+        val fg = FakeForeground()
+        val (recorder, draft) = open(foregroundControl = fg)
+        draft.opened()
+        recordAndPause(recorder, draft, 1_000)
+        draft.commit(File(dir, "out.wav"))
+
+        assertTrue(fg.log.isEmpty())
     }
 }

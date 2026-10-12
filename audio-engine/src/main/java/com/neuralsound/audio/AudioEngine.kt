@@ -7,6 +7,7 @@ import androidx.core.content.ContextCompat
 import com.neuralsound.audio.internal.NativeMixerController
 import com.neuralsound.audio.internal.NativeRecorderSession
 import com.neuralsound.audio.internal.recorder.DefaultRecorder
+import com.neuralsound.audio.internal.recorder.MicForegroundController
 import com.neuralsound.audio.internal.player.DefaultPlayer
 import com.neuralsound.audio.internal.video.PlayerVideo
 import com.neuralsound.audio.internal.waveform.DefaultWaveformAnalyzer
@@ -51,6 +52,7 @@ class AudioEngine private constructor(context: Context) {
             ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
         },
+        foregroundControl = { MicForegroundController(applicationContext) },
     )
 
     /** Offline file waveform analysis. */

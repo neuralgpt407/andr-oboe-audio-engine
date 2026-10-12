@@ -57,6 +57,7 @@ internal class DefaultRecorder(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val tickMs: Long = WaveformBuckets.BUCKET_MS.toLong(),
+    private val foregroundControl: () -> MicForegroundControl? = { null },
 ) : Recorder {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val operations = Mutex()
@@ -76,6 +77,7 @@ internal class DefaultRecorder(
     private var ticker: Job? = null
     @Volatile private var activeTake: DefaultTake? = null
     private var overflowCount = 0L
+    private val sharedForeground: MicForegroundControl? by lazy { foregroundControl() }
     private val drafts = java.util.concurrent.CopyOnWriteArrayList<DefaultRecordingDraft>()
 
     init {
@@ -139,6 +141,7 @@ internal class DefaultRecorder(
             dispatcher = dispatcher,
             ioDispatcher = ioDispatcher,
             onClosed = { drafts.remove(it) },
+            foregroundControl = if (request.foreground != null) sharedForeground else null,
         )
         val opened = draft.initialize()
         if (!opened.isOk) return AudioResult.Err(opened.errorOrNull()!!)

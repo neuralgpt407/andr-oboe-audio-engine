@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
@@ -45,6 +46,7 @@ internal class DefaultRecordingDraft(
     private val ioDispatcher: CoroutineDispatcher = dispatcher,
     private val promoter: (File, File) -> Unit = { from, to -> AtomicFilePromoter.promote(from, to) },
     private val onClosed: (DefaultRecordingDraft) -> Unit = {},
+    private val foregroundControl: MicForegroundControl? = null,
 ) : RecordingDraft {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val commands = Mutex()
@@ -58,6 +60,7 @@ internal class DefaultRecordingDraft(
     private var good = DraftState()
     private var edit: Edit? = null
     private var editCounter = 0
+    private var foregroundActive = false
 
     private class Edit(
         val id: Int,
@@ -183,6 +186,10 @@ internal class DefaultRecordingDraft(
             _state.value = good.copy(problem = DraftProblem.PERMISSION_DENIED, recoverable = true)
             return AudioResult.Err(AudioError.PermissionDenied)
         }
+        if (!ensureForeground()) {
+            _state.value = good.copy(problem = DraftProblem.FOREGROUND_SERVICE_UNAVAILABLE, recoverable = true)
+            return AudioResult.Err(AudioError.InvalidState)
+        }
         val wasEmpty = mode == TakeMode.NEW
         val prepared = withContext(ioDispatcher) {
             runCatching {
@@ -236,6 +243,15 @@ internal class DefaultRecordingDraft(
             liveWaveform = DraftWaveform(startFrame),
         )
         return AudioResult.Done
+    }
+
+    /** Promotes the opt-in mic service before the first take; it then stays up until the draft ends. */
+    private suspend fun ensureForeground(): Boolean {
+        val foreground = request.foreground ?: return true
+        if (foregroundActive) return true
+        val control = foregroundControl ?: return false
+        foregroundActive = control.promote(foreground)
+        return foregroundActive
     }
 
     private suspend fun failStart(error: AudioError): AudioResult<Unit> {
@@ -361,7 +377,11 @@ internal class DefaultRecordingDraft(
         File(file.parentFile, file.name + ".tmp").delete()
     }
 
-    private fun close() {
+    private suspend fun close() {
+        if (foregroundActive) {
+            foregroundActive = false
+            withContext(NonCancellable) { foregroundControl?.stop() }
+        }
         scope.cancel()
         onClosed(this)
     }

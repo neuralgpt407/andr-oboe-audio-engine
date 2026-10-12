@@ -22,7 +22,7 @@ data class DraftRequest(
 
 /**
  * Opt-in microphone foreground service for background recording; the app supplies the
- * notification. (Service wiring is not active yet; the type is reserved.)
+ * notification.
  *
  * @property notificationId Id the notification is shown under.
  * @property notification Builds the notification the app wants to show while recording.
